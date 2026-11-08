@@ -1,0 +1,44 @@
+name: Build iPhone app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild -project HeartLog.xcodeproj -scheme HeartLog -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee build.log
+      - name: Package
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/HeartLog.app Payload/
+          /usr/bin/zip -qry HeartLog.ipa Payload
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest HeartLog.ipa --title "Latest build" --notes "Built from ${GITHUB_SHA}"
+      - name: Save build log
+        if: always()
+        run: |
+          mkdir -p /tmp/l
+          { echo "sha ${GITHUB_SHA} status ${{ job.status }}"; grep -E "error:|\*\* BUILD" build.log | head -80; echo ---; tail -40 build.log; } > /tmp/l/last.txt || true
+          git config user.name "build"
+          git config user.email "build@users.noreply.github.com"
+          git checkout --orphan ci-log
+          git rm -rfq . || true
+          cp /tmp/l/last.txt last.txt
+          git add last.txt
+          git commit -qm "Build log"
+          git push -f origin ci-log

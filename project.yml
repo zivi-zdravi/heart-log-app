@@ -1,0 +1,30 @@
+name: HeartLog
+options:
+  bundleIdPrefix: app.zivizdravi
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  HeartLog:
+    type: application
+    platform: iOS
+    sources: [HeartLog]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGNING_ALLOWED: "NO"
+    info:
+      path: HeartLog/Info.plist
+      properties:
+        CFBundleDisplayName: Heart Log
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [bluetooth-central]
+        NSBluetoothAlwaysUsageDescription: Heart Log reads heart rate from your band and keeps recording while the phone is locked.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
