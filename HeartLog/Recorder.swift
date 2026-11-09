@@ -40,6 +40,8 @@ final class Recorder: NSObject, ObservableObject {
         get { defaults.string(forKey: "band").flatMap { UUID(uuidString: $0) } }
         set { defaults.set(newValue?.uuidString, forKey: "band") }
     }
+    var activeSession: String? { session }
+    func flushActive() { if let s = session { Store.shared.flush(s) } }
     var profileName: String {
         get { defaults.string(forKey: "profile") ?? "" }
         set { defaults.set(newValue, forKey: "profile") }

@@ -32,7 +32,6 @@ enum Report {
 
     static func build(_ id: String) -> String {
         let store = Store.shared
-        store.flush(id)
         var samples: [Sample] = []
         let raw = (try? String(contentsOf: store.samplesURL(id), encoding: .utf8)) ?? ""
         for line in raw.split(separator: "\n") {

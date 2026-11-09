@@ -28,3 +28,22 @@ targets:
         NSBluetoothAlwaysUsageDescription: Heart Log reads heart rate from your band and keeps recording while the phone is locked.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+  HeartLogTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - HeartLogTests
+      - path: HeartLog/BackupArchive.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        CODE_SIGNING_ALLOWED: "NO"
+schemes:
+  HeartLog:
+    build:
+      targets:
+        HeartLog: all
+    test:
+      targets: [HeartLogTests]
