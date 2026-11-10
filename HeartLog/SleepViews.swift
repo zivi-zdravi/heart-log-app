@@ -105,6 +105,7 @@ struct SleepView: View {
             })
         }
         .task(id: day) { await reload() }
+        .followToday($day)
         .sheet(isPresented: $adjusting) {
             AdjustSleep(day: day, current: record?.sleep) { Task { await reload() } }
         }
@@ -507,4 +508,31 @@ struct TrendCard: View {
             }
         }
     }
+}
+
+/// When a screen is showing today and the date changes (the app keeps running overnight to record),
+/// move it to the new today. A screen showing an earlier day stays put.
+struct FollowToday: ViewModifier {
+    @Binding var day: Date
+    @State private var knownToday = Calendar.current.startOfDay(for: Date())
+    private let tick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: check)
+            .onReceive(tick) { _ in check() }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in check() }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in check() }
+    }
+
+    private func check() {
+        let now = Calendar.current.startOfDay(for: Date())
+        guard now != knownToday else { return }
+        if Calendar.current.isDate(day, inSameDayAs: knownToday) { day = now }
+        knownToday = now
+    }
+}
+
+extension View {
+    func followToday(_ day: Binding<Date>) -> some View { modifier(FollowToday(day: day)) }
 }

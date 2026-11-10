@@ -88,6 +88,7 @@ struct TodayView: View {
             })
         }
         .task(id: day) { await reload() }
+        .followToday($day)
         .onAppear { Task { await reload() } }
         .onReceive(refresh) { _ in
             if isToday { Task { await reload() } }
