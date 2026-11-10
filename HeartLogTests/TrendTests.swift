@@ -26,7 +26,7 @@ final class TrendTests: XCTestCase {
     func testTrailingSkipsMissingDays() {
         let v = [1, 2, 3, 10].map { TrendValue(date: day($0), value: Double($0), app: false) }
         let t = TrendMath.trailing(v, calendar: cal)
-        XCTAssertEqual(t.map(\.value), [1, 1.5, 2, 5])
+        XCTAssertEqual(t.map(\.value), [1, 1.5, 2, 10])  // Nov 10's window starts Nov 4, so days 1 to 3 drop out.
     }
 
     func testDomain() {
