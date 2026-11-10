@@ -2,3 +2,4 @@ HeartLog.xcodeproj/
 build/
 *.ipa
 HeartLog/Fonts/
+HeartLog/Assets.xcassets/AppIcon.appiconset/AppIcon.png

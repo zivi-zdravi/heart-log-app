@@ -130,9 +130,12 @@ struct TodayView: View {
             }
             Spacer()
             NavigationLink { SettingsView() } label: {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Band \(rec.battery.map { "\($0)%" } ?? "--")").foregroundColor(Theme.text)
-                    Text(rec.recording ? "Recording" : "Not recording").foregroundColor(rec.recording ? Theme.green : Theme.orange)
+                HStack(spacing: 10) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Band \(rec.battery.map { "\($0)%" } ?? "--")").foregroundColor(Theme.text)
+                        Text(rec.recording ? "Recording" : "Not recording").foregroundColor(rec.recording ? Theme.green : Theme.orange)
+                    }
+                    Image(systemName: "gearshape").font(.system(size: 18)).foregroundColor(Theme.dim)
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.horizontal, 12)

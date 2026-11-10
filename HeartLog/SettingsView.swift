@@ -6,7 +6,10 @@ struct SettingsView: View {
     @ObservedObject private var r = Recorder.shared
     @ObservedObject private var settings = SettingsStore.shared
     @State private var weight = ""
-    @State private var height = ""
+    @State private var feet = ""
+    @State private var inches = ""
+    @State private var showZoneInfo = false
+    @State private var showStepsHelp = false
     @State private var age = ""
     @State private var sessions: [String] = []
     @State private var report = ""
@@ -22,8 +25,12 @@ struct SettingsView: View {
 
     var body: some View {
         List {
-            Section("Profile") {
-                TextField("Your name", text: $settings.value.profileName)
+            Section {
+                labeled("Name") { TextField("Your name", text: $settings.value.profileName).multilineTextAlignment(.trailing) }
+            } header: {
+                Text("Profile")
+            } footer: {
+                Text("Changes save automatically.")
             }
 
             Section {
@@ -54,36 +61,67 @@ struct SettingsView: View {
             }
 
             Section {
+                if showZoneInfo {
+                    Text("These two numbers set your five heart rate zones, which drive the zone bars and strain. Max is the highest your heart gets in an all-out effort. Resting is your usual low when relaxed. The defaults match your old WHOOP zones, so most people never change them.")
+                        .font(.footnote).foregroundColor(Theme.dim)
+                }
                 Stepper("Max heart rate: \(settings.value.maxHR)", value: $settings.value.maxHR, in: 140...220)
-                Stepper("Resting heart rate: \(settings.value.restingForZones)", value: $settings.value.restingForZones, in: 35...100)
+                Stepper("Resting heart rate (for zones): \(settings.value.restingForZones)", value: $settings.value.restingForZones, in: 35...100)
                 row("Zones start at", settings.value.zoneBounds.map { "\($0)" }.joined(separator: ", "))
             } header: {
-                Text("Heart rate zones")
-            } footer: {
-                Text("Zones use 40, 60, 70, 80 and 90% of the range between these two numbers.")
+                HStack {
+                    Text("Heart rate zones")
+                    Spacer()
+                    Button { showZoneInfo.toggle() } label: {
+                        Image(systemName: showZoneInfo ? "info.circle.fill" : "info.circle").font(.system(size: 18))
+                    }
+                    .accessibilityLabel("What are these?")
+                }
             }
 
             Section {
-                TextField("Weight (lb)", text: $weight).keyboardType(.decimalPad)
-                    .onChange(of: weight) { v in settings.value.weightKg = Double(v).map { $0 * 0.45359237 } }
-                TextField("Height (inches)", text: $height).keyboardType(.decimalPad)
-                    .onChange(of: height) { v in settings.value.heightCm = Double(v).map { $0 * 2.54 } }
-                TextField("Age", text: $age).keyboardType(.numberPad)
-                    .onChange(of: age) { v in settings.value.age = Int(v) }
-                Picker("Calorie formula", selection: $settings.value.female) {
-                    Text("Not set").tag(Bool?.none)
+                labeled("Weight") {
+                    TextField("0", text: $weight).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 70)
+                    Text("lb").foregroundColor(Theme.dim)
+                }
+                .onChange(of: weight) { v in settings.value.weightKg = Double(v).map { $0 * 0.45359237 } }
+                labeled("Height") {
+                    TextField("0", text: $feet).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 36)
+                    Text("ft").foregroundColor(Theme.dim)
+                    TextField("0", text: $inches).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 36)
+                    Text("in").foregroundColor(Theme.dim)
+                }
+                .onChange(of: feet) { _ in saveHeight() }
+                .onChange(of: inches) { _ in saveHeight() }
+                labeled("Age") {
+                    TextField("0", text: $age).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 70)
+                }
+                .onChange(of: age) { v in settings.value.age = Int(v) }
+                Picker("Sex", selection: $settings.value.female) {
                     Text("Female").tag(Bool?.some(true))
                     Text("Male").tag(Bool?.some(false))
                 }
+                .pickerStyle(.segmented)
             } header: {
                 Text("For calorie estimates")
             } footer: {
                 Text("Stays on this phone. Calories are estimates from heart rate.")
             }
 
+            Section("Steps") {
+                row("Last update from Shortcut", StepsLog.lastUpdate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "None yet")
+                Button("How to set up the steps Shortcut") { showStepsHelp = true }
+            }
+
             Section {
                 Button(busy ? "Working" : "Back up now") { backUp() }.disabled(busy)
                 Button("Restore from a backup") { showRestore = true }.disabled(busy)
+                HStack {
+                    Text("Import WHOOP history")
+                    Spacer()
+                    Text("Sleep update").font(.footnote)
+                }
+                .foregroundColor(Theme.dim)
                 if !backupStatus.isEmpty { Text(backupStatus).font(.footnote) }
             } header: {
                 Text("Backup")
@@ -123,6 +161,7 @@ struct SettingsView: View {
         } message: {
             Text("Nothing is recorded until you start again.")
         }
+        .sheet(isPresented: $showStepsHelp) { StepsHelp() }
         .fileImporter(isPresented: $showRestore, allowedContentTypes: [.data]) { restore($0) }
         .fileMover(isPresented: $showSave, file: backupFile) { result in
             switch result {
@@ -135,10 +174,28 @@ struct SettingsView: View {
         }
         .onAppear {
             weight = settings.value.weightKg.map { String(Int(($0 / 0.45359237).rounded())) } ?? ""
-            height = settings.value.heightCm.map { String(Int(($0 / 2.54).rounded())) } ?? ""
+            if let cm = settings.value.heightCm {
+                let total = Int((cm / 2.54).rounded())
+                feet = String(total / 12)
+                inches = String(total % 12)
+            }
             age = settings.value.age.map { "\($0)" } ?? ""
             refresh(nil)
         }
+    }
+
+    private func labeled<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+            Spacer()
+            content()
+        }
+    }
+
+    private func saveHeight() {
+        let f = Int(feet) ?? 0
+        let i = Int(inches) ?? 0
+        settings.value.heightCm = (f > 0 || i > 0) ? Double(f * 12 + i) * 2.54 : nil
     }
 
     private func row(_ k: String, _ v: String) -> some View {
@@ -247,5 +304,34 @@ struct RootView: View {
                 .tabItem { Label("Meals", systemImage: "fork.knife") }.tag(4)
         }
         .tint(Theme.orange)
+    }
+}
+
+struct StepsHelp: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Make the Shortcut") {
+                    Text("1. Open the Shortcuts app, tap +, and name it Zdravlje Steps.")
+                    Text("2. Add the action Find Health Samples. Set Type to Steps, and add a filter: Start Date is Today.")
+                    Text("3. Add Calculate Statistics, and set it to Sum.")
+                    Text("4. Add Log Steps in Zdravlje, and set Steps to the result of Calculate Statistics.")
+                    Text("5. Run it once. Allow Health access when asked, then check that Today shows your steps.")
+                }
+                Section("Run it automatically") {
+                    Text("1. In Shortcuts, go to Automation and tap +.")
+                    Text("2. Choose Time of Day, for example 12:00 PM, and set it to Run Immediately.")
+                    Text("3. Pick Zdravlje Steps. Repeat for 6:00 PM and 11:55 PM if you want updates through the day.")
+                }
+                Section {
+                    Text("Steps come from your iPhone, so they count when it's with you. Each run replaces today's number.")
+                        .foregroundColor(Theme.dim)
+                }
+            }
+            .navigationTitle("Steps Shortcut")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
     }
 }

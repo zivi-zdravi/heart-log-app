@@ -16,6 +16,10 @@ jobs:
           curl -fsSL -o HeartLog/Fonts/Outfit.ttf "https://github.com/google/fonts/raw/main/ofl/outfit/Outfit%5Bwght%5D.ttf"
           curl -fsSL -o HeartLog/Fonts/OFL.txt "https://github.com/google/fonts/raw/main/ofl/outfit/OFL.txt"
           file HeartLog/Fonts/Outfit.ttf | grep -qi "font"
+      - name: Draw app icon
+        run: |
+          swift tools/make-icon.swift HeartLog/Fonts/Outfit.ttf HeartLog/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+          file HeartLog/Assets.xcassets/AppIcon.appiconset/AppIcon.png
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
       - name: Test backup code

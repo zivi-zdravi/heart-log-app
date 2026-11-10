@@ -9,6 +9,11 @@ final class StepsProvider: ObservableObject {
     private let store = HKHealthStore()
 
     func load(day: Date) async {
+        if let logged = StepsLog.entry(for: day) {
+            steps = logged.count
+            note = "From Shortcut, \(Date(timeIntervalSince1970: Double(logged.at) / 1000).formatted(date: .omitted, time: .shortened))"
+            return
+        }
         guard HKHealthStore.isHealthDataAvailable(), let type = HKObjectType.quantityType(forIdentifier: .stepCount) else {
             steps = nil
             note = "Health not available"
@@ -18,7 +23,7 @@ final class StepsProvider: ObservableObject {
             try await store.requestAuthorization(toShare: Set<HKSampleType>(), read: Set([type as HKObjectType]))
         } catch {
             steps = nil
-            note = "Health access unavailable"
+            note = "Set up the steps Shortcut in Settings"
             return
         }
         let end = min(Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day, Date())
