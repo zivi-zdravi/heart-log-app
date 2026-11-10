@@ -80,7 +80,7 @@ enum Overrides {
 /// earlier days come from WHOOP history. Finished days are cached in days.json.
 final class DayEngine {
     static let shared = DayEngine()
-    static let version = 2
+    static let version = 3
 
     private struct Cache: Codable {
         var fingerprint = ""
