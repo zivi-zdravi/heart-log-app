@@ -14,6 +14,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 struct HeartLogApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     var body: some Scene {
-        WindowGroup { ContentView().preferredColorScheme(.dark) }
+        WindowGroup { RootView().preferredColorScheme(.dark) }
     }
 }

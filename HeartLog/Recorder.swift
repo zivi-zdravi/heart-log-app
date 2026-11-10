@@ -43,9 +43,12 @@ final class Recorder: NSObject, ObservableObject {
     var activeSession: String? { session }
     func flushActive() { if let s = session { Store.shared.flush(s) } }
     var profileName: String {
-        get { defaults.string(forKey: "profile") ?? "" }
-        set { defaults.set(newValue, forKey: "profile") }
+        get { SettingsStore.shared.value.profileName }
+        set { SettingsStore.shared.value.profileName = newValue }
     }
+
+    /// The last few hours of readings, kept in memory for live screens. Main thread only.
+    private(set) var recent: [Sample] = []
 
     func didLaunch(background: Bool) {
         central = CBCentralManager(delegate: self, queue: .main,
@@ -149,7 +152,10 @@ final class Recorder: NSObject, ObservableObject {
                 i += 2
             }
         }
-        Store.shared.addSample(s, ms: Store.nowMs(), hr: hr, flags: flags, len: bytes.count, rr: rr)
+        let now = Store.nowMs()
+        Store.shared.addSample(s, ms: now, hr: hr, flags: flags, len: bytes.count, rr: rr)
+        recent.append(Sample(t: now, hr: hr, rr: rr))
+        if recent.count > 16_000 { recent.removeFirst(2_000) }
         bpm = hr
         readings += 1
         if !rr.isEmpty { withBeatTiming += 1 }

@@ -10,6 +10,12 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+      - name: Get headline font
+        run: |
+          mkdir -p HeartLog/Fonts
+          curl -fsSL -o HeartLog/Fonts/Outfit.ttf "https://github.com/google/fonts/raw/main/ofl/outfit/Outfit%5Bwght%5D.ttf"
+          curl -fsSL -o HeartLog/Fonts/OFL.txt "https://github.com/google/fonts/raw/main/ofl/outfit/OFL.txt"
+          file HeartLog/Fonts/Outfit.ttf | grep -qi "font"
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
       - name: Test backup code
@@ -27,6 +33,8 @@ jobs:
         run: |
           mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/HeartLog.app Payload/
+          codesign --force --sign - --entitlements HeartLog/HeartLog.entitlements --timestamp=none Payload/HeartLog.app
+          codesign -d --entitlements - Payload/HeartLog.app
           /usr/bin/zip -qry HeartLog.ipa Payload
       - name: Publish
         env:

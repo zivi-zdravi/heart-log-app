@@ -18,6 +18,8 @@ struct RestoreResult: Equatable {
     var added = 0
     var updated = 0
     var kept = 0
+    /// Settings-style files that already existed here and were left alone.
+    var deferred: [String] = []
 }
 
 /// One portable file holding every recording. It has a SHA-256 checksum so damage is
@@ -31,7 +33,7 @@ enum BackupArchive {
     private static let tailLength = UInt64(footer.count + SHA256.byteCount)
 
     static func isAllowed(_ name: String) -> Bool {
-        if name == "profile.txt" { return true }
+        if ["profile.txt", "settings.json", "activities.json"].contains(name) { return true }
         for suffix in [".samples.csv", ".events.csv"] where name.hasSuffix(suffix) {
             let stem = name.dropLast(suffix.count)
             return stem.first == "s" && stem.count > 1 && stem.dropFirst().allSatisfy { $0.isASCII && $0.isNumber }
@@ -146,6 +148,11 @@ enum BackupArchive {
             let dest = dir.appendingPathComponent(entry.name)
             let exists = fm.fileExists(atPath: dest.path)
             let localSize = exists ? ((try fm.attributesOfItem(atPath: dest.path)[.size] as? NSNumber)?.uint64Value ?? 0) : 0
+            if exists && entry.name.hasSuffix(".json") {
+                result.kept += 1
+                result.deferred.append(entry.name)
+                continue
+            }
             if skipping.contains(entry.name) || (exists && localSize >= entry.size) {
                 result.kept += 1
                 continue
@@ -179,5 +186,15 @@ enum BackupArchive {
             }
         }
         return result
+    }
+
+    /// Returns one small file's contents from a verified backup.
+    static func extract(_ url: URL, name: String) throws -> Data? {
+        guard let entry = try verify(url).first(where: { $0.name == name }), entry.size <= 50_000_000 else { return nil }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: entry.offset)
+        guard let data = try handle.read(upToCount: Int(entry.size)), data.count == Int(entry.size) else { throw BackupError.corrupt }
+        return data
     }
 }

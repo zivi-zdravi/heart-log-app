@@ -91,6 +91,19 @@ final class BackupArchiveTests: XCTestCase {
         XCTAssertThrowsError(try BackupArchive.verify(file))
     }
 
+    func testSettingsFilesAreNeverOverwritten() throws {
+        try write("[\"backup\"]", "activities.json", in: a)
+        try write("{\"b\":1}", "settings.json", in: a)
+        try BackupArchive.create(from: a, to: file)
+        try write("[\"local\"]", "activities.json", in: b)
+        let result = try BackupArchive.restore(file, into: b)
+        XCTAssertEqual(result.deferred, ["activities.json"])
+        XCTAssertEqual(result.added, 1)
+        XCTAssertEqual(try read("activities.json", in: b), "[\"local\"]")
+        XCTAssertEqual(try read("settings.json", in: b), "{\"b\":1}")
+        XCTAssertEqual(try BackupArchive.extract(file, name: "activities.json").map { String(decoding: $0, as: UTF8.self) }, "[\"backup\"]")
+    }
+
     func testFileNamesCannotEscapeTheFolder() {
         for bad in ["../s1.events.csv", "s1/../../x.events.csv", "/etc/s1.events.csv", "s.events.csv", "s1a.samples.csv", "s1.events.csv.exe", "profile.txt/.."] {
             XCTAssertFalse(BackupArchive.isAllowed(bad), bad)

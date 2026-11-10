@@ -44,7 +44,7 @@ enum Report {
         var events: [(t: Int64, type: String, detail: String)] = []
         let rawEvents = (try? String(contentsOf: store.eventsURL(id), encoding: .utf8)) ?? ""
         for line in rawEvents.split(separator: "\n") {
-            let p = line.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+            let p = line.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false).map { "\($0)" }
             if p.count == 3, let t = Int64(p[0]) { events.append((t, p[1], p[2])) }
         }
         func count(_ type: String) -> Int { events.filter { $0.type == type }.count }
