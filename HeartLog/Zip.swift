@@ -21,7 +21,9 @@ enum ZipReader {
     }
 
     private static func u32(_ d: Data, _ i: Int) throws -> Int {
-        try u16(d, i) | try u16(d, i + 2) << 16
+        let lo = try u16(d, i)
+        let hi = try u16(d, i + 2)
+        return lo | hi << 16
     }
 
     /// File name (inside the archive) to contents. Folders are skipped.
@@ -53,7 +55,9 @@ enum ZipReader {
             if name.hasSuffix("/") { continue }
             guard size <= maxFileSize, compSize != 0xFFFF_FFFF else { throw ZipError.unsupported }
             guard try u32(data, local) == 0x0403_4B50 else { throw ZipError.damaged }
-            let start = local + 30 + (try u16(data, local + 26)) + (try u16(data, local + 28))
+            let localName = try u16(data, local + 26)
+            let localExtra = try u16(data, local + 28)
+            let start = local + 30 + localName + localExtra
             guard start + compSize <= data.count else { throw ZipError.damaged }
             let raw = data.subdata(in: data.startIndex + start..<data.startIndex + start + compSize)
             switch method {
