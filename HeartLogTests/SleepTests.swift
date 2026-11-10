@@ -29,6 +29,18 @@ final class SleepTests: XCTestCase {
         XCTAssertEqual(p.awakeEvents, 1)
     }
 
+    /// Heart rate settles a little at bedtime and drops further later in the night.
+    func testExtendsToEarlierSettledStretch() throws {
+        var s: [Sample] = []
+        for m in 0..<1200 {
+            let hr = m < 240 ? 78 : m < 480 ? 64 : m < 900 ? 56 : 78
+            for i in 0..<20 { s.append(Sample(t: base + Int64(m) * 60_000 + Int64(i) * 3000, hr: hr, rr: [])) }
+        }
+        let p = try XCTUnwrap(SleepMath.detect(s))
+        XCTAssertEqual(p.onset, base + 240 * 60_000)
+        XCTAssertEqual(p.wake, base + 900 * 60_000)
+    }
+
     func testNoSleepWithoutEnoughData() {
         XCTAssertNil(SleepMath.detect(Array(night().prefix(2000))))
     }

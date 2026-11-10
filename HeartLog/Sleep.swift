@@ -101,7 +101,30 @@ enum SleepMath {
         }
         if let c = current, best == nil || c.count > best!.count { best = c }
         guard let b = best, b.count >= 120 else { return nil }
-        return analyze(avg, onsetMinute: b.start, wakeMinute: b.end + 1, threshold: t, samples: s)
+        // Heart rate keeps falling through the night, so the core block starts late.
+        // Extend it outward while heart rate stays settled, allowing breaks of up to 10 minutes.
+        let values = Array(avg.values)
+        let lo = percentile(values, 0.1)
+        let loose = max(t + 3, lo + 0.5 * (percentile(values, 0.8) - lo))
+        func extend(from edge: Int64, step: Int64, limit: Int64) -> Int64 {
+            var result = edge
+            var m = edge + step
+            var misses = 0
+            while (step < 0 ? m >= limit : m <= limit) {
+                if let v = smooth[m], v <= loose {
+                    result = m
+                    misses = 0
+                } else {
+                    misses += 1
+                    if misses > 10 { break }
+                }
+                m += step
+            }
+            return result
+        }
+        let onset = extend(from: b.start, step: -1, limit: first)
+        let wake = extend(from: b.end, step: 1, limit: last)
+        return analyze(avg, onsetMinute: onset, wakeMinute: wake + 1, threshold: t, samples: s)
     }
 
     /// Scores a sleep window the person set by hand.

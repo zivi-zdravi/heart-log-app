@@ -151,7 +151,7 @@ struct TodayView: View {
             Card {
                 Text(expiry.timeIntervalSinceNow > 0 ? "App needs re-signing by \(expiry.formatted(date: .abbreviated, time: .shortened))" : "App signing has expired")
                     .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.orange)
-                Text("Connect your phone to your computer and run Sideloadly.").font(.system(size: 14)).foregroundColor(Theme.dim)
+                Text("Close Zdravlje, connect your phone to your computer and run Sideloadly. Then reopen Zdravlje.").font(.system(size: 14)).foregroundColor(Theme.dim)
             }
         }
     }
