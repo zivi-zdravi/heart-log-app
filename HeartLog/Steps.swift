@@ -23,7 +23,11 @@ final class StepsProvider: ObservableObject {
             try await store.requestAuthorization(toShare: Set<HKSampleType>(), read: Set([type as HKObjectType]))
         } catch {
             steps = nil
-            note = "Set up the steps Shortcut in Settings"
+            if StepsLog.all().isEmpty {
+                note = "Set up the steps Shortcut in Settings"
+            } else {
+                note = Calendar.current.isDateInToday(day) ? "Updates when your Shortcut runs" : "No steps logged this day"
+            }
             return
         }
         let end = min(Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day, Date())

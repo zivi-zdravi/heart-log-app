@@ -65,6 +65,18 @@ enum SleepMath {
         return out
     }
 
+    /// How much heart rate moves within each minute. It drops when you lie still and jumps when you wake.
+    static func minuteSpread(_ s: [Sample]) -> [Int64: Double] {
+        var acc: [Int64: [Double]] = [:]
+        for x in s where x.hr > 0 { acc[x.t / 60_000, default: []].append(Double(x.hr)) }
+        var out: [Int64: Double] = [:]
+        for (m, v) in acc where v.count >= 20 {
+            let mean = v.reduce(0, +) / Double(v.count)
+            out[m] = (v.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(v.count)).squareRoot()
+        }
+        return out
+    }
+
     static func threshold(_ avg: [Int64: Double]) -> Double? {
         guard avg.count >= 180 else { return nil }
         let values = Array(avg.values)
@@ -106,24 +118,36 @@ enum SleepMath {
         let values = Array(avg.values)
         let lo = percentile(values, 0.1)
         let loose = max(t + 3, lo + 0.5 * (percentile(values, 0.8) - lo))
-        func extend(from edge: Int64, step: Int64, limit: Int64) -> Int64 {
+        let spread = minuteSpread(s)
+        var steady: [Int64: Double] = [:]
+        for m in spread.keys { steady[m] = median((m - 4...m + 5).compactMap { spread[$0] }) }
+        let coreHR = median((b.start..<b.start + 60).compactMap { avg[$0] }) ?? t
+        func extend(from edge: Int64, step: Int64, limit: Int64, maxMisses: Int, ok: (Int64) -> Bool) -> Int64 {
             var result = edge
             var m = edge + step
             var misses = 0
-            while (step < 0 ? m >= limit : m <= limit) {
-                if let v = smooth[m], v <= loose {
+            while step < 0 ? m >= limit : m <= limit {
+                if ok(m) {
                     result = m
                     misses = 0
                 } else {
                     misses += 1
-                    if misses > 10 { break }
+                    if misses > maxMisses { break }
                 }
                 m += step
             }
             return result
         }
-        let onset = extend(from: b.start, step: -1, limit: first)
-        let wake = extend(from: b.end, step: 1, limit: last)
+        // Before the core: settled heart rate, or very steady heart rate not far above the early-night level.
+        let onset = extend(from: b.start, step: -1, limit: first, maxMisses: 10) { m in
+            guard let v = smooth[m] else { return false }
+            return v <= loose || ((steady[m] ?? 9) <= 1.3 && v <= coreHR + 10)
+        }
+        // After the core: settled heart rate that hasn't turned jumpy, which happens on waking.
+        let wake = extend(from: b.end, step: 1, limit: last, maxMisses: 10) { m in
+            guard let v = smooth[m] else { return false }
+            return v <= loose && (steady[m] ?? 9) <= 1.8
+        }
         return analyze(avg, onsetMinute: onset, wakeMinute: wake + 1, threshold: t, samples: s)
     }
 
