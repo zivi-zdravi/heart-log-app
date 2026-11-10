@@ -116,12 +116,7 @@ struct SettingsView: View {
             Section {
                 Button(busy ? "Working" : "Back up now") { backUp() }.disabled(busy)
                 Button("Restore from a backup") { showRestore = true }.disabled(busy)
-                HStack {
-                    Text("Import WHOOP history")
-                    Spacer()
-                    Text("Sleep update").font(.footnote)
-                }
-                .foregroundColor(Theme.dim)
+                NavigationLink("Import WHOOP history") { ImportView() }
                 if !backupStatus.isEmpty { Text(backupStatus).font(.footnote) }
             } header: {
                 Text("Backup")
@@ -245,6 +240,15 @@ struct SettingsView: View {
             do {
                 let result = try BackupArchive.restore(url, into: Store.shared.dir, skipping: skip)
                 let activities = try result.deferred.contains("activities.json") ? BackupArchive.extract(url, name: "activities.json") : nil
+                if result.deferred.contains("history.json"), let h = try BackupArchive.extract(url, name: "history.json") {
+                    HistoryStore.shared.merge(json: h)
+                } else {
+                    HistoryStore.shared.reload()
+                }
+                if result.deferred.contains("overrides.json"), let o = try BackupArchive.extract(url, name: "overrides.json") {
+                    Overrides.merge(o)
+                }
+                DayEngine.shared.invalidateAll()
                 DispatchQueue.main.async {
                     var merged = 0
                     if let data = activities { merged = ActivityStore.shared.merge(data) } else { ActivityStore.shared.load() }
@@ -281,6 +285,7 @@ struct SettingsView: View {
 
 struct RootView: View {
     @State private var tab = 0
+    @State private var sleepDay = Calendar.current.startOfDay(for: Date())
 
     init() {
         let appearance = UITabBarAppearance()
@@ -292,15 +297,18 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            TodayView(openActivity: { tab = 1 }, openMeals: { tab = 4 })
+            TodayView(openActivity: { tab = 1 }, openMeals: { tab = 4 }, openSleep: { day in
+                sleepDay = day
+                tab = 2
+            })
                 .tabItem { Label("Today", systemImage: "sun.max") }.tag(0)
             ActivityTab()
                 .tabItem { Label("Activity", systemImage: "figure.walk") }.tag(1)
-            ComingSoon(title: "Sleep", note: "Sleep score, sleep timing and overnight trends are the next update. Your band is already recording the data they need.")
+            SleepView(day: $sleepDay)
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(2)
-            ComingSoon(title: "Trends", note: "Weekly, monthly and yearly charts, including your imported WHOOP history, come with the sleep update.")
+            TrendsView()
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(3)
-            ComingSoon(title: "Meals", note: "Meal logging, calories eaten and macros are coming after the sleep update.")
+            ComingSoon(title: "Meals", note: "Meal logging, calories eaten and macros are the next update.")
                 .tabItem { Label("Meals", systemImage: "fork.knife") }.tag(4)
         }
         .tint(Theme.orange)
@@ -315,8 +323,8 @@ struct StepsHelp: View {
                 Section("Make the Shortcut") {
                     Text("1. Open the Shortcuts app, tap +, and name it Zdravlje Steps.")
                     Text("2. Add the action Find Health Samples. Set Type to Steps, and add a filter: Start Date is Today.")
-                    Text("3. Add Calculate Statistics, and set it to Sum.")
-                    Text("4. Add Log Steps in Zdravlje, and set Steps to the result of Calculate Statistics.")
+                    Text("3. Add Calculate Statistics. Tap its first setting and choose Sum, and make sure it uses the Health Samples from step 2.")
+                    Text("4. Add Log Steps in Zdravlje. Tap Steps, choose Select Variable, and pick Sum (the result of step 3).")
                     Text("5. Run it once. Allow Health access when asked, then check that Today shows your steps.")
                 }
                 Section("Run it automatically") {

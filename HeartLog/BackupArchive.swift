@@ -33,7 +33,7 @@ enum BackupArchive {
     private static let tailLength = UInt64(footer.count + SHA256.byteCount)
 
     static func isAllowed(_ name: String) -> Bool {
-        if ["profile.txt", "settings.json", "activities.json", "steps.json"].contains(name) { return true }
+        if ["profile.txt", "settings.json", "activities.json", "steps.json", "history.json", "overrides.json"].contains(name) { return true }
         for suffix in [".samples.csv", ".events.csv"] where name.hasSuffix(suffix) {
             let stem = name.dropLast(suffix.count)
             return stem.first == "s" && stem.count > 1 && stem.dropFirst().allSatisfy { $0.isASCII && $0.isNumber }

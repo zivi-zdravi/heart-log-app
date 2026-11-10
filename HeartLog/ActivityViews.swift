@@ -45,6 +45,8 @@ struct ActivityTab: View {
     @ObservedObject private var acts = ActivityStore.shared
     @State private var picking = false
     @State private var showLive = false
+    @State private var imported: [ImportedWorkout] = []
+    @State private var showAllImported = false
 
     var body: some View {
         NavigationStack {
@@ -66,6 +68,18 @@ struct ActivityTab: View {
                             }
                         }
                     }
+                    if !imported.isEmpty {
+                        Text("From WHOOP history").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.dim).padding(.top, 4)
+                        Card {
+                            ForEach(imported.prefix(showAllImported ? imported.count : 15)) { w in
+                                NavigationLink { ImportedWorkoutView(workout: w) } label: { ImportedWorkoutRow(workout: w) }
+                            }
+                            if imported.count > 15 && !showAllImported {
+                                Button("Show all \(imported.count)") { showAllImported = true }
+                                    .font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.text).frame(minHeight: 44)
+                            }
+                        }
+                    }
                 }
                 .padding(20)
             }
@@ -80,6 +94,7 @@ struct ActivityTab: View {
             }
         }
         .fullScreenCover(isPresented: $showLive) { LiveActivityView() }
+        .onAppear { imported = HistoryStore.shared.workouts }
         .onReceive(acts.$pendingStart) { pending in
             guard pending else { return }
             DispatchQueue.main.async {

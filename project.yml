@@ -38,6 +38,9 @@ targets:
       - HeartLogTests
       - path: HeartLog/BackupArchive.swift
       - path: HeartLog/Metrics.swift
+      - path: HeartLog/Sleep.swift
+      - path: HeartLog/Zip.swift
+      - path: HeartLog/History.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests
