@@ -28,6 +28,7 @@ targets:
         UIBackgroundModes: [bluetooth-central]
         NSHealthShareUsageDescription: Heart Log reads your step count from Apple Health. It never writes to Health.
         UIAppFonts: [Outfit.ttf]
+        NSCameraUsageDescription: Zdravlje uses the camera only to scan food barcodes. Nothing is recorded or saved.
         NSBluetoothAlwaysUsageDescription: Heart Log reads heart rate from your band and keeps recording while the phone is locked.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
@@ -41,6 +42,7 @@ targets:
       - path: HeartLog/Sleep.swift
       - path: HeartLog/Zip.swift
       - path: HeartLog/History.swift
+      - path: HeartLog/Food.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests

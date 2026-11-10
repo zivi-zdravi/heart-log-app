@@ -108,6 +108,9 @@ struct SettingsView: View {
                 Text("Stays on this phone. Calories are estimates from heart rate.")
             }
 
+            Section("Meals") {
+                NavigationLink("Goal, avoid list and food database") { MealsSettingsView() }
+            }
             Section("Steps") {
                 row("Last update from Shortcut", StepsLog.lastUpdate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "None yet")
                 Button("How to set up the steps Shortcut") { showStepsHelp = true }
@@ -248,11 +251,13 @@ struct SettingsView: View {
                 if result.deferred.contains("overrides.json"), let o = try BackupArchive.extract(url, name: "overrides.json") {
                     Overrides.merge(o)
                 }
+                let meals = try result.deferred.contains("meals.json") ? BackupArchive.extract(url, name: "meals.json") : nil
                 DayEngine.shared.invalidateAll()
                 DispatchQueue.main.async {
                     var merged = 0
                     if let data = activities { merged = ActivityStore.shared.merge(data) } else { ActivityStore.shared.load() }
                     SettingsStore.shared.reload()
+                    if let m = meals { MealStore.shared.merge(m) } else { MealStore.shared.reload() }
                     busy = false
                     backupStatus = "Restore finished: \(result.added) added, \(result.updated) extended, \(result.kept) already up to date, \(merged) activities merged."
                     refresh(nil)
@@ -308,7 +313,7 @@ struct RootView: View {
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(2)
             TrendsView()
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(3)
-            ComingSoon(title: "Meals", note: "Meal logging, calories eaten and macros are the next update.")
+            MealsView()
                 .tabItem { Label("Meals", systemImage: "fork.knife") }.tag(4)
         }
         .tint(Theme.orange)
