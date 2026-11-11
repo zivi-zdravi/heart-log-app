@@ -17,6 +17,9 @@ final class Recorder: NSObject, ObservableObject {
     private let hrChar = CBUUID(string: "2A37")
     private let batService = CBUUID(string: "180F")
     private let batChar = CBUUID(string: "2A19")
+    private let infoService = CBUUID(string: "180A")
+    private let firmwareChar = CBUUID(string: "2A26")
+    private let hardwareChar = CBUUID(string: "2A27")
 
     @Published var bpm = 0
     @Published var status = "Not connected"
@@ -27,6 +30,10 @@ final class Recorder: NSObject, ObservableObject {
     @Published var readings = 0
     @Published var withBeatTiming = 0
     @Published var startedAt: Date?
+    /// What the band reports in the standard Device Information service. Nil until read.
+    @Published var firmware: String? = UserDefaults.standard.string(forKey: "band.firmware")
+    @Published var hardware: String? = UserDefaults.standard.string(forKey: "band.hardware")
+    @Published var infoMissing = false
 
     private var central: CBCentralManager!
     private var band: CBPeripheral?
@@ -122,7 +129,7 @@ final class Recorder: NSObject, ObservableObject {
         guard let b = band else { status = "Band not found"; log("resume_failed"); return }
         b.delegate = self
         if b.state == .connected {
-            b.discoverServices([hrService, batService])
+            b.discoverServices([hrService, batService, infoService])
         } else {
             status = "Waiting for band"
             central.connect(b, options: nil)  // Never times out; iOS completes it when the band is in range.
@@ -191,7 +198,7 @@ extension Recorder: CBCentralManagerDelegate {
         log("connected", p.name ?? "")
         status = p.name ?? "Connected"
         p.delegate = self
-        p.discoverServices([hrService, batService])
+        p.discoverServices([hrService, batService, infoService])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
@@ -209,9 +216,17 @@ extension Recorder: CBCentralManagerDelegate {
 
 extension Recorder: CBPeripheralDelegate {
     func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
-        for s in p.services ?? [] {
-            p.discoverCharacteristics(s.uuid == hrService ? [hrChar] : [batChar], for: s)
+        let services = p.services ?? []
+        for s in services {
+            if s.uuid == hrService {
+                p.discoverCharacteristics([hrChar], for: s)
+            } else if s.uuid == batService {
+                p.discoverCharacteristics([batChar], for: s)
+            } else if s.uuid == infoService {
+                p.discoverCharacteristics([firmwareChar, hardwareChar], for: s)
+            }
         }
+        infoMissing = !services.contains { $0.uuid == infoService }
     }
 
     func peripheral(_ p: CBPeripheral, didDiscoverCharacteristicsFor s: CBService, error: Error?) {
@@ -220,6 +235,8 @@ extension Recorder: CBPeripheralDelegate {
                 p.setNotifyValue(true, for: c)
             } else if c.uuid == batChar {
                 batteryCharacteristic = c
+                p.readValue(for: c)
+            } else if c.uuid == firmwareChar || c.uuid == hardwareChar {
                 p.readValue(for: c)
             }
         }
@@ -232,6 +249,16 @@ extension Recorder: CBPeripheralDelegate {
         } else if c.uuid == batChar, let v = data.first {
             battery = Int(v)
             log("battery", String(v))
+        } else if c.uuid == firmwareChar || c.uuid == hardwareChar {
+            let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
+            guard !text.isEmpty else { return }
+            let key = c.uuid == firmwareChar ? "band.firmware" : "band.hardware"
+            let old = defaults.string(forKey: key)
+            if old != text {
+                defaults.set(text, forKey: key)
+                log(c.uuid == firmwareChar ? "firmware" : "hardware", old.map { "\($0) to \(text)" } ?? text)
+            }
+            if c.uuid == firmwareChar { firmware = text } else { hardware = text }
         }
     }
 }

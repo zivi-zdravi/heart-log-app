@@ -127,6 +127,16 @@ struct SettingsView: View {
                 Text(lastBackup > 0 ? "Last backup: \(Date(timeIntervalSince1970: lastBackup).formatted(date: .abbreviated, time: .shortened)). Restoring only adds data." : "No backup yet. Restoring only adds data.")
             }
 
+            Section {
+                row("Band firmware", r.firmware ?? (r.infoMissing ? "Not reported by the band" : "Read when the band connects"))
+                if let h = r.hardware { row("Band hardware", h) }
+                row("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
+            } header: {
+                Text("About")
+            } footer: {
+                Text("Read straight from the band, without the WHOOP app. Firmware 50.43 or later is reported to block reading the band's stored history without a membership. Zdravlje uses the heart rate broadcast, which isn't affected.")
+            }
+
             if let expiry = Signing.expiry {
                 Section("App signing") {
                     row(expiry > Date() ? "Re-sign by" : "Expired", expiry.formatted(date: .abbreviated, time: .shortened))
