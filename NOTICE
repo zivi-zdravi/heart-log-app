@@ -1,0 +1,18 @@
+Zdravlje (HeartLog)
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3. See LICENSE.
+
+Band communication in this app is ported from the OpenStrap project's open
+protocol and analytics work, licensed under AGPL-3.0:
+
+  https://github.com/OpenStrap/protocol   (wire format, commands, record layouts)
+  https://github.com/OpenStrap/analytics  (sleep staging and related methods)
+  https://github.com/OpenStrap/edge       (band behavior and safety guards)
+
+Copyright for the ported portions remains with the OpenStrap contributors.
+This app is not affiliated with or endorsed by OpenStrap, and does not use the
+OpenStrap name or logo.
+
+WHOOP is a trademark of its owner. This app is not affiliated with WHOOP.

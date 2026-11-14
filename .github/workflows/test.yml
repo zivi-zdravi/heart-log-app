@@ -1,0 +1,30 @@
+name: Test branch
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get headline font
+        run: |
+          mkdir -p HeartLog/Fonts
+          curl -fsSL -o HeartLog/Fonts/Outfit.ttf "https://github.com/google/fonts/raw/main/ofl/outfit/Outfit%5Bwght%5D.ttf"
+          curl -fsSL -o HeartLog/Fonts/OFL.txt "https://github.com/google/fonts/raw/main/ofl/outfit/OFL.txt"
+      - name: Draw app icon
+        run: swift tools/make-icon.swift HeartLog/Fonts/Outfit.ttf HeartLog/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available | grep -E 'iPhone' | head -1 | grep -oE '[0-9A-F-]{36}')
+          xcodebuild test -project HeartLog.xcodeproj -scheme HeartLog -destination "id=$UDID" -only-testing:HeartLogTests -derivedDataPath build-test CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log
+      - name: Save test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log

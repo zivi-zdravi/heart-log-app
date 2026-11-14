@@ -44,6 +44,7 @@ targets:
       - path: HeartLog/History.swift
       - path: HeartLog/Food.swift
       - path: HeartLog/Trend.swift
+      - path: HeartLog/BandProtocol.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests

@@ -9,8 +9,8 @@ Not affiliated with any wearable maker. Not a medical device. All scores are est
 1. **Personal data never goes in this repo.** No exports, baselines, heart rate zones, names or keys. This repo is code only, and it is public.
 2. **Keep raw readings.** Scores are calculated from stored heart rate and R-R data, so a better formula can be applied to old nights.
 3. **Every record belongs to a profile,** so two people's bands never mix.
-4. **Listen only.** The app does not write commands to the band. The optional alarm is the only planned exception, and it comes last.
-5. **Use the standard Bluetooth Heart Rate service,** so a chest strap or armband can replace the band without losing the app or its history.
+4. **Write to the band only through the guarded command layer.** The band's private channel (history download, battery, events, alarm) goes through `BandProtocol.swift`, which refuses every command that can erase data, break pairing, reboot, or update firmware. A history batch is acknowledged (which lets the band erase it) only after every frame in it validated.
+5. **The standard Bluetooth Heart Rate service stays the permanent base,** so a chest strap or armband can replace the band without losing the app or its history, and the app keeps working if the private channel ever stops.
 6. **Backup and restore come early,** because deleting the app erases its data.
 7. **The app may not contact any server,** except the single AI function in Step 5. No analytics, ads or third-party libraries.
 
