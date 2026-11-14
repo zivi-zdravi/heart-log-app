@@ -331,7 +331,7 @@ struct SleepView: View {
             .font(.system(size: 14)).foregroundColor(Theme.text)
             GeometryReader { g in
                 let w = g.size.width
-                func x(_ v: Double) -> CGFloat { top > 0 ? CGFloat(min(1, max(0, v / top))) * w : 0 }
+                let x: (Double) -> CGFloat = { v in top > 0 ? CGFloat(min(1, max(0, v / top))) * w : 0 }
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.track)
                     if let u = usual {
