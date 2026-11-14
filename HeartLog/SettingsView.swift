@@ -121,6 +121,7 @@ struct SettingsView: View {
                 Button(busy ? "Working" : "Back up now") { backUp() }.disabled(busy)
                 Button("Restore from a backup") { showRestore = true }.disabled(busy)
                 NavigationLink("Import WHOOP history") { ImportView() }
+                NavigationLink("Import OpenStrap export") { OpenStrapImportView() }
                 if !backupStatus.isEmpty { Text(backupStatus).font(.footnote) }
             } header: {
                 Text("Backup")
@@ -262,6 +263,11 @@ struct SettingsView: View {
                     HistoryStore.shared.merge(json: h)
                 } else {
                     HistoryStore.shared.reload()
+                }
+                if result.deferred.contains(BandHistoryStore.fileName), let b = try BackupArchive.extract(url, name: BandHistoryStore.fileName) {
+                    BandHistoryStore.shared.merge(json: b)
+                } else {
+                    BandHistoryStore.shared.reload()
                 }
                 if result.deferred.contains("overrides.json"), let o = try BackupArchive.extract(url, name: "overrides.json") {
                     Overrides.merge(o)

@@ -163,3 +163,108 @@ struct ImportedWorkoutView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
+
+/// Imports the CSV files OpenStrap exports: daily metrics and sleep stages.
+struct OpenStrapImportView: View {
+    @State private var picking = false
+    @State private var found: OpenStrapImport.Result?
+    @State private var status = ""
+    @State private var busy = false
+    @State private var done = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Import OpenStrap export").font(Theme.display(28)).foregroundColor(Theme.text)
+                Card {
+                    Text("In OpenStrap, export Daily metrics and Sleep stages, and save both CSV files to Files. Then choose them here together. Nothing leaves your phone.")
+                        .font(.system(size: 14)).foregroundColor(Theme.dim)
+                }
+                Button(busy ? "Reading" : "Choose export files") { picking = true }
+                    .buttonStyle(TintButton(color: Theme.text)).disabled(busy)
+                if !status.isEmpty { Text(status).font(.system(size: 14)).foregroundColor(done ? Theme.green : Theme.orange) }
+                if let f = found, !done {
+                    summary(f)
+                    Card {
+                        Text("Imported: what your band measured itself, meaning band-counted steps, breathing rate and sleep stages. Skipped: OpenStrap's copy of your WHOOP history, which Zdravlje already has, and OpenStrap's own scores, since Zdravlje calculates its own. Importing again later only fills gaps.")
+                            .font(.system(size: 14)).foregroundColor(Theme.dim)
+                    }
+                    Button("Import \(f.data.days.count) days") { save(f) }.buttonStyle(TintButton(color: Theme.green)).disabled(busy)
+                }
+            }
+            .padding(20)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.commaSeparatedText, .plainText, .data], allowsMultipleSelection: true) { read($0) }
+    }
+
+    private func summary(_ f: OpenStrapImport.Result) -> some View {
+        let keys = f.data.days.keys.sorted()
+        let nights = f.data.days.values.filter { !($0.stages ?? []).isEmpty }.count
+        let steps = f.data.days.values.filter { $0.steps != nil }.count
+        return Card {
+            Text("Found").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            line("Band days", "\(f.data.days.count)")
+            if let a = keys.first, let b = keys.last { line("Dates", "\(pretty(a)) to \(pretty(b))") }
+            line("Nights with sleep stages", "\(nights)")
+            line("Days with band steps", "\(steps)")
+            if f.skippedWhoopRows > 0 { line("WHOOP rows skipped", "\(f.skippedWhoopRows)") }
+        }
+    }
+
+    private func line(_ k: String, _ v: String) -> some View {
+        HStack {
+            Text(k).foregroundColor(Theme.dim)
+            Spacer()
+            Text(v).fontWeight(.semibold).foregroundColor(Theme.text)
+        }
+        .font(.system(size: 15))
+    }
+
+    private func pretty(_ key: String) -> String {
+        let p = key.split(separator: "-").compactMap { Int($0) }
+        guard p.count == 3, let d = Calendar.current.date(from: DateComponents(year: p[0], month: p[1], day: p[2])) else { return key }
+        return d.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    private func read(_ picked: Result<[URL], Error>) {
+        guard case .success(let urls) = picked, !urls.isEmpty else { return }
+        busy = true
+        done = false
+        found = nil
+        status = "Reading \(urls.count) file\(urls.count == 1 ? "" : "s")"
+        DispatchQueue.global(qos: .userInitiated).async {
+            var files: [String: Data] = [:]
+            for url in urls {
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                if let data = try? Data(contentsOf: url) { files[url.lastPathComponent] = data }
+            }
+            let parsed = OpenStrapImport.parse(files: files)
+            DispatchQueue.main.async {
+                busy = false
+                if !parsed.foundDaily && !parsed.foundSleep {
+                    status = "Those don't look like OpenStrap exports. The file names should start with openstrap_daily and openstrap_sleep."
+                } else if parsed.data.days.isEmpty {
+                    status = "No band-measured days in those files, only WHOOP history, which Zdravlje already has."
+                } else {
+                    status = parsed.foundSleep ? "" : "Sleep stages file not chosen. You can import it later; it only fills gaps."
+                    found = parsed
+                }
+            }
+        }
+    }
+
+    private func save(_ f: OpenStrapImport.Result) {
+        busy = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let changed = BandHistoryStore.shared.merge(f.data)
+            DispatchQueue.main.async {
+                busy = false
+                done = true
+                status = changed == 0 ? "Everything in these files was already here." : "Imported \(changed) day\(changed == 1 ? "" : "s"). Sleep stages will show on the new Sleep screen."
+            }
+        }
+    }
+}
