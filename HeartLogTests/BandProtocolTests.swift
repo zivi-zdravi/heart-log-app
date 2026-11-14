@@ -137,6 +137,37 @@ final class BandProtocolTests: XCTestCase {
         XCTAssertEqual(out[0].sequence, 0xAA)
     }
 
+    // MARK: Replies
+
+    private func reply(op: UInt8, status: UInt8, body: [UInt8]) -> BandCommandReply? {
+        let inner: [UInt8] = [BandPacketType.commandResponse, 0x05, op, 0xA1, status] + body
+        let raw = BandFraming.buildFrame(inner: inner, generation: .gen5)
+        return BandFraming.parseFrame(raw, generation: .gen5).flatMap(BandCommandReply.init)
+    }
+
+    func testClockReplyReadsSecondsAfterStatus() {
+        let t: UInt32 = 1_794_691_881 // 2026-11-14
+        let le = [UInt8(t & 0xFF), UInt8((t >> 8) & 0xFF), UInt8((t >> 16) & 0xFF), UInt8(t >> 24)]
+        let r = reply(op: BandOpcode.getClock, status: 1, body: le + [0, 0])
+        XCTAssertEqual(r?.requestSequence, 0xA1)
+        XCTAssertEqual(r?.clockSeconds, t)
+    }
+
+    func testFailedClockReplyIsIgnored() {
+        let t: UInt32 = 1_794_691_881
+        let le = [UInt8(t & 0xFF), UInt8((t >> 8) & 0xFF), UInt8((t >> 16) & 0xFF), UInt8(t >> 24)]
+        XCTAssertNil(reply(op: BandOpcode.getClock, status: 2, body: le)?.clockSeconds)
+    }
+
+    func testImplausibleClockIsIgnored() {
+        XCTAssertNil(reply(op: BandOpcode.getClock, status: 1, body: [1, 0, 0, 0])?.clockSeconds)
+    }
+
+    func testCommandFrameIsNotAReply() {
+        let f = BandFraming.parseFrame(BandCommand.hello(sequence: 0, generation: .gen5), generation: .gen5)!
+        XCTAssertNil(BandCommandReply(f))
+    }
+
     // MARK: GATT
 
     func testGen5UUIDs() {

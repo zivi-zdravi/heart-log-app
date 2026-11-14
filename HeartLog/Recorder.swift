@@ -9,7 +9,8 @@ struct FoundBand: Identifiable {
     let peripheral: CBPeripheral
 }
 
-/// Listen-only client for the standard Bluetooth Heart Rate and Battery services.
+/// Client for the standard Bluetooth Heart Rate and Battery services, plus the
+/// band's private channel through BandLink on the same connection.
 final class Recorder: NSObject, ObservableObject {
     static let shared = Recorder()
 
@@ -71,7 +72,10 @@ final class Recorder: NSObject, ObservableObject {
         nc.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification, object: nil, queue: .main) { [weak self] _ in self?.log("locked") }
         nc.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main) { [weak self] _ in self?.log("unlocked") }
         nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in self?.log("terminating") }
+        BandLink.shared.log = { [weak self] type, detail in self?.log(type, detail) }
     }
+
+    private var servicesToDiscover: [CBUUID] { [hrService, batService, infoService] + BandLink.shared.serviceUUIDs }
 
     private func log(_ type: String, _ detail: String = "") {
         if let s = session { Store.shared.addEvent(s, type, detail) }
@@ -117,6 +121,7 @@ final class Recorder: NSObject, ObservableObject {
         if let b = band { central.cancelPeripheralConnection(b) }
         band = nil
         batteryCharacteristic = nil
+        BandLink.shared.reset()
         bpm = 0
         status = "Not connected"
     }
@@ -129,7 +134,7 @@ final class Recorder: NSObject, ObservableObject {
         guard let b = band else { status = "Band not found"; log("resume_failed"); return }
         b.delegate = self
         if b.state == .connected {
-            b.discoverServices([hrService, batService, infoService])
+            b.discoverServices(servicesToDiscover)
         } else {
             status = "Waiting for band"
             central.connect(b, options: nil)  // Never times out; iOS completes it when the band is in range.
@@ -198,7 +203,7 @@ extension Recorder: CBCentralManagerDelegate {
         log("connected", p.name ?? "")
         status = p.name ?? "Connected"
         p.delegate = self
-        p.discoverServices([hrService, batService, infoService])
+        p.discoverServices(servicesToDiscover)
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
@@ -209,6 +214,7 @@ extension Recorder: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         guard recording else { return }
         log("disconnected", error?.localizedDescription ?? "")
+        BandLink.shared.reset()
         status = "Waiting for band"
         central.connect(p, options: nil)
     }
@@ -224,12 +230,18 @@ extension Recorder: CBPeripheralDelegate {
                 p.discoverCharacteristics([batChar], for: s)
             } else if s.uuid == infoService {
                 p.discoverCharacteristics([firmwareChar, hardwareChar], for: s)
+            } else {
+                BandLink.shared.didDiscover(service: s, on: p)
             }
+        }
+        if !services.contains(where: { BandGeneration.fromServiceUUID($0.uuid.uuidString) != nil }) {
+            BandLink.shared.markNotFound()
         }
         infoMissing = !services.contains { $0.uuid == infoService }
     }
 
     func peripheral(_ p: CBPeripheral, didDiscoverCharacteristicsFor s: CBService, error: Error?) {
+        if BandLink.shared.didDiscoverCharacteristics(for: s, on: p) { return }
         for c in s.characteristics ?? [] {
             if c.uuid == hrChar {
                 p.setNotifyValue(true, for: c)
@@ -244,7 +256,9 @@ extension Recorder: CBPeripheralDelegate {
 
     func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic, error: Error?) {
         guard let data = c.value else { return }
-        if c.uuid == hrChar {
+        if BandLink.shared.handles(c) {
+            BandLink.shared.didReceive(data)
+        } else if c.uuid == hrChar {
             handleHR(data)
         } else if c.uuid == batChar, let v = data.first {
             battery = Int(v)
@@ -260,5 +274,13 @@ extension Recorder: CBPeripheralDelegate {
             }
             if c.uuid == firmwareChar { firmware = text } else { hardware = text }
         }
+    }
+
+    func peripheral(_ p: CBPeripheral, didUpdateNotificationStateFor c: CBCharacteristic, error: Error?) {
+        BandLink.shared.didUpdateNotificationState(for: c, error: error)
+    }
+
+    func peripheral(_ p: CBPeripheral, didWriteValueFor c: CBCharacteristic, error: Error?) {
+        if let error { log("band_write_failed", error.localizedDescription) }
     }
 }

@@ -300,9 +300,13 @@ enum BandOpcode {
     static let exitHighFreqSync: UInt8 = 0x61
     static let stopHaptics: UInt8 = 0x7A
 
+    /// Clock read/write. Shared by both generations: OpenStrap physically
+    /// confirmed gen5 answers these; the gen5-only 146/147 values seen in
+    /// some notes are unverified and deprecated there.
+    static let setClock: UInt8 = 0x0A
+    static let getClock: UInt8 = 0x0B
+
     static func hello(_ g: BandGeneration) -> UInt8 { g == .gen5 ? 0x91 : 0x23 }
-    static func getClock(_ g: BandGeneration) -> UInt8 { g == .gen5 ? 147 : 0x0B }
-    static func setClock(_ g: BandGeneration) -> UInt8 { g == .gen5 ? 146 : 0x0A }
     static func runHapticPattern(_ g: BandGeneration) -> UInt8 { g == .gen5 ? 0x13 : 0x4F }
 
     /// Opcodes that are never sent, enforced in code rather than by
@@ -336,6 +340,10 @@ enum BandCommand {
     static func hello(sequence: UInt8, generation: BandGeneration) -> [UInt8] {
         let body: [UInt8] = generation == .gen5 ? [0x01] : [0x00]
         return (try? build(sequence: sequence, opcode: BandOpcode.hello(generation), payload: body, generation: generation)) ?? []
+    }
+
+    static func getClock(sequence: UInt8, generation: BandGeneration) -> [UInt8] {
+        (try? build(sequence: sequence, opcode: BandOpcode.getClock, payload: [0x00], generation: generation)) ?? []
     }
 
     static func getBatteryLevel(sequence: UInt8, generation: BandGeneration) -> [UInt8] {
@@ -375,6 +383,37 @@ enum BandCommand {
 
     static func exitHighFreqSync(sequence: UInt8, generation: BandGeneration) -> [UInt8] {
         (try? build(sequence: sequence, opcode: BandOpcode.exitHighFreqSync, payload: [0x00], generation: generation)) ?? []
+    }
+}
+
+/// A reply to one of our commands (packet type 0x24).
+/// Layout: inner = [0x24][seq][opcode][echoed request seq][status][body…].
+/// Status 1 means success. Check it before trusting the body: a failed reply
+/// can leave stale bytes where the body would be.
+struct BandCommandReply {
+    let opcode: UInt8
+    let requestSequence: UInt8
+    let status: UInt8
+    let body: [UInt8]
+
+    var succeeded: Bool { status == 1 }
+
+    init?(_ frame: BandFrame) {
+        guard frame.decodable, frame.packetType == BandPacketType.commandResponse, frame.inner.count >= 5 else { return nil }
+        opcode = frame.inner[2]
+        requestSequence = frame.inner[3]
+        status = frame.inner[4]
+        body = frame.inner.count > 5 ? Array(frame.inner[5...]) : []
+    }
+
+    /// The band's clock in Unix seconds, from a successful GET_CLOCK reply.
+    /// Returns nil for anything implausible rather than guessing, because
+    /// alarms are later armed against this value.
+    var clockSeconds: UInt32? {
+        guard opcode == BandOpcode.getClock, succeeded, body.count >= 4 else { return nil }
+        let v = UInt32(body[0]) | (UInt32(body[1]) << 8) | (UInt32(body[2]) << 16) | (UInt32(body[3]) << 24)
+        // 2020-01-01 to 2040-01-01.
+        return (1_577_836_800...2_208_988_800).contains(v) ? v : nil
     }
 }
 

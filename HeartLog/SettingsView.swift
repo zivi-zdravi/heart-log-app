@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject private var r = Recorder.shared
+    @ObservedObject private var link = BandLink.shared
     @ObservedObject private var settings = SettingsStore.shared
     @State private var weight = ""
     @State private var feet = ""
@@ -130,11 +131,15 @@ struct SettingsView: View {
             Section {
                 row("Band firmware", r.firmware ?? (r.infoMissing ? "Not reported by the band" : "Read when the band connects"))
                 if let h = r.hardware { row("Band hardware", h) }
+                row("Band link", link.state.label)
+                if let offset = link.clockOffset {
+                    row("Band clock", abs(offset) <= 2 ? "In sync with phone" : "\(offset > 0 ? "Ahead" : "Behind") by \(abs(offset)) s")
+                }
                 row("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
             } header: {
                 Text("About")
             } footer: {
-                Text("Read straight from the band, without the WHOOP app. Firmware 50.43 or later is reported to block reading the band's stored history without a membership. Zdravlje uses the heart rate broadcast, which isn't affected.")
+                Text("Read straight from the band, without the WHOOP app. Band link is the band's own data channel; for now Zdravlje only checks that it answers. Heart rate still comes from the standard broadcast, which keeps working either way.")
             }
 
             if let expiry = Signing.expiry {
