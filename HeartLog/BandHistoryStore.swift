@@ -43,3 +43,16 @@ final class BandHistoryStore {
         return merge(incoming)
     }
 }
+
+extension PhoneUse {
+    /// Phone use logged by any recording between two times.
+    static func read(from: Int64, to: Int64) -> [Span] {
+        var events: [(Int64, String)] = []
+        for id in Store.shared.sessions() {
+            guard let started = Int64(id.dropFirst()), started <= to else { continue }
+            let csv = (try? String(contentsOf: Store.shared.eventsURL(id), encoding: .utf8)) ?? ""
+            events += parse(csv).filter { ($0.1 == "unlocked" || $0.1 == "locked") && $0.0 >= from - 3_600_000 && $0.0 <= to }
+        }
+        return spans(events).filter { $0.end > from && $0.start < to }
+    }
+}

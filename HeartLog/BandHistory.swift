@@ -167,13 +167,15 @@ enum StageMath {
         var inBedMin: Double
     }
 
-    /// The night as the stages describe it: in bed from the first block to the
-    /// last, asleep for every non-wake minute. Nil when there's no sleep at all.
+    /// The night as the stages describe it: from the first block to the final
+    /// wake, in bed until the last block, asleep for every non-wake minute.
+    /// Nil when there's no sleep at all.
     static func night(_ stages: [BandStage]) -> Night? {
         guard let first = stages.first, let last = stages.last,
-              stages.contains(where: { $0.kind != .wake }), last.end > first.start else { return nil }
+              let finalSleep = stages.last(where: { $0.kind != .wake }), last.end > first.start else { return nil }
         let asleep = stages.filter { $0.kind != .wake }.reduce(0) { $0 + $1.minutes }
-        return Night(start: first.start, end: last.end, asleepMin: asleep, inBedMin: Double(last.end - first.start) / 60_000)
+        // Ends at the final wake; time lying awake after it still counts as in bed.
+        return Night(start: first.start, end: finalSleep.end, asleepMin: asleep, inBedMin: Double(last.end - first.start) / 60_000)
     }
 
     /// Minutes awake between falling asleep and the final wake, leaving out
@@ -230,5 +232,98 @@ enum StageMath {
         if value > usual.high + margin { return 1 }
         if value < usual.low - margin { return -1 }
         return 0
+    }
+}
+
+/// Phone use as an awake signal. Zdravlje logs "unlocked" and "locked" while
+/// recording; time between them means you were awake, whatever the band says.
+enum PhoneUse {
+    struct Span: Equatable {
+        var start: Int64
+        var end: Int64
+    }
+
+    /// Minutes of sleep that must follow the night's last phone use for it to
+    /// count as going back to sleep. Less than this, and picking up the phone
+    /// is treated as the final wake. Tuned after a week of nights.
+    static let backToSleepMinutes: Double = 20
+    /// An unlock with no lock after it is capped at this length.
+    static let openEndedCap: Int64 = 30 * 60_000
+
+    /// Pairs each unlock with the next lock. Events are (time ms, type).
+    static func spans(_ events: [(Int64, String)]) -> [Span] {
+        var out: [Span] = []
+        var open: Int64?
+        for (t, type) in events.sorted(by: { $0.0 < $1.0 }) {
+            if type == "unlocked" {
+                if let o = open { out.append(Span(start: o, end: min(t, o + openEndedCap))) }
+                open = t
+            } else if type == "locked", let o = open {
+                if t > o { out.append(Span(start: o, end: t)) }
+                open = nil
+            }
+        }
+        if let o = open { out.append(Span(start: o, end: o + openEndedCap)) }
+        return out
+    }
+
+    /// Reads "ms,type,detail" event lines.
+    static func parse(_ csv: String) -> [(Int64, String)] {
+        csv.split(whereSeparator: \.isNewline).compactMap { line in
+            let parts = line.split(separator: ",", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count >= 2, let t = Int64(parts[0]) else { return nil }
+            return (t, String(parts[1]))
+        }
+    }
+
+    /// Marks phone use inside a night's stages as awake, and ends the night at
+    /// the last phone pickup when too little sleep follows it.
+    static func apply(_ phone: [Span], to stages: [BandStage]) -> [BandStage] {
+        guard let first = stages.first, let last = stages.last, !phone.isEmpty else { return stages }
+        let inside = phone.filter { $0.end > first.start && $0.start < last.end }
+        guard !inside.isEmpty else { return stages }
+        // Split blocks at phone edges; overlapping pieces become wake.
+        var out: [BandStage] = []
+        for b in stages {
+            var cuts = [b.start, b.end]
+            for p in inside {
+                if p.start > b.start && p.start < b.end { cuts.append(p.start) }
+                if p.end > b.start && p.end < b.end { cuts.append(p.end) }
+            }
+            cuts = Array(Set(cuts)).sorted()
+            for i in 0..<(cuts.count - 1) {
+                let a = cuts[i], z = cuts[i + 1]
+                let onPhone = inside.contains { $0.start <= a && $0.end >= z }
+                out.append(BandStage(start: a, end: z, kind: onPhone ? .wake : b.kind))
+            }
+        }
+        // Final wake: too little sleep after the last phone use.
+        if let lastUse = inside.max(by: { $0.start < $1.start }) {
+            let after = out.filter { $0.start >= lastUse.end && $0.kind != .wake }.reduce(0) { $0 + $1.minutes }
+            if after < backToSleepMinutes {
+                out = out.map { $0.start >= lastUse.start ? BandStage(start: $0.start, end: $0.end, kind: .wake) : $0 }
+            }
+        }
+        return OpenStrapImport.merged(out)
+    }
+
+    /// The same rules for a night found from heart rate only (no stages).
+    static func apply(_ phone: [Span], to p: SleepPeriod) -> SleepPeriod {
+        let inside = phone.filter { $0.end > p.onset && $0.start < p.wake }
+        guard !inside.isEmpty else { return p }
+        var r = p
+        var wake = p.wake
+        if let lastUse = inside.max(by: { $0.start < $1.start }),
+           Double(p.wake - lastUse.end) / 60_000 < backToSleepMinutes {
+            wake = lastUse.start
+        }
+        let awakeOnPhone = inside.reduce(0.0) { sum, s in
+            let a = max(s.start, p.onset), z = min(s.end, wake)
+            return z > a ? sum + Double(z - a) / 60_000 : sum
+        }
+        let cutTail = Double(p.wake - wake) / 60_000
+        r.wake = wake
+        r.asleepMin = max(0, p.asleepMin - awakeOnPhone - cutTail)
+        return r
     }
 }

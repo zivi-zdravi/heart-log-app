@@ -66,7 +66,11 @@ struct SleepView: View {
     @State private var usualWakeMin: Double?
     @ObservedObject private var settings = SettingsStore.shared
 
-    private var stages: [BandStage]? { band?.stages.flatMap { $0.isEmpty ? nil : $0 } }
+    @State private var phone: [PhoneUse.Span] = []
+    private var stages: [BandStage]? {
+        guard let raw = band?.stages, !raw.isEmpty else { return nil }
+        return PhoneUse.apply(phone, to: raw)
+    }
 
     private var isToday: Bool { Calendar.current.isDateInToday(day) }
     private var nightOf: Date { Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day }
@@ -126,7 +130,8 @@ struct SleepView: View {
         }
         if stages != nil {
             let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap, and its bedtime and wake time come from them." : ""
-            return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(from)"
+            let onPhone = phone.isEmpty ? "" : " Time you spent on your phone counts as awake."
+            return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(onPhone)\(from)"
         }
         return "Sleep stages show for nights the band link downloads, because they need the band's movement data. Scores are estimates."
     }
@@ -156,10 +161,13 @@ struct SleepView: View {
                 .compactMap { bandDays[DayEngine.shared.key($0)]?.stageMinutes[.deep] }
             return (asleep, deep, SleepMath.median(wakes), bandDays[key])
         }.value
+        let dayStart = Int64(Calendar.current.startOfDay(for: d).timeIntervalSince1970 * 1000)
+        let phoneSpans = await Task.detached { PhoneUse.read(from: dayStart - 6 * 3_600_000, to: dayStart + 14 * 3_600_000) }.value
         guard d == day else { return }
         record = r
         samples = s
         band = past.band
+        phone = phoneSpans
         pastAsleep = past.asleep
         pastDeep = past.deep
         usualWakeMin = past.wake

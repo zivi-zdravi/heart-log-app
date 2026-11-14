@@ -130,3 +130,53 @@ final class StageNightTests: XCTestCase {
         XCTAssertNil(StageMath.night([]))
     }
 }
+
+final class PhoneUseTests: XCTestCase {
+    private let m: Int64 = 60_000
+    private func s(_ a: Int64, _ b: Int64, _ k: BandStage.Kind) -> BandStage { BandStage(start: a * m, end: b * m, kind: k) }
+    private func span(_ a: Int64, _ b: Int64) -> PhoneUse.Span { .init(start: a * m, end: b * m) }
+
+    func testPairsUnlocksWithLocks() {
+        let ev: [(Int64, String)] = [(10 * m, "unlocked"), (25 * m, "locked"), (40 * m, "locked"), (50 * m, "unlocked")]
+        XCTAssertEqual(PhoneUse.spans(ev), [span(10, 25), span(50, 80)]) // open-ended unlock capped at 30 min
+    }
+
+    func testParsesEventLines() {
+        let ev = PhoneUse.parse("1000,unlocked,\n2000,battery,80\n3000,locked,\nbad line")
+        XCTAssertEqual(ev.map(\.0), [1000, 2000, 3000])
+        XCTAssertEqual(ev.map(\.1), ["unlocked", "battery", "locked"])
+    }
+
+    func testMidNightPhoneThenBackToSleep() {
+        // Asleep 0-600; on the phone 200-220; back to sleep for hours.
+        let out = PhoneUse.apply([span(200, 220)], to: [s(0, 300, .light), s(300, 600, .deep)])
+        XCTAssertEqual(out.map(\.kind), [.light, .wake, .light, .deep])
+        let n = StageMath.night(out)!
+        XCTAssertEqual(n.end, 600 * m) // night still ends at the real final wake
+        XCTAssertEqual(n.asleepMin, 580)
+    }
+
+    func testLyingInBedOnPhoneEndsTheNight() {
+        // Band calls 590-670 REM, but the phone was picked up at 590 and only 10
+        // "sleep" minutes follow the last lock: the night ends at 590.
+        let out = PhoneUse.apply([span(590, 660)], to: [s(0, 590, .light), s(590, 670, .rem)])
+        let n = StageMath.night(out)!
+        XCTAssertEqual(n.end, 590 * m)
+        XCTAssertEqual(n.asleepMin, 590)
+        XCTAssertEqual(n.inBedMin, 670) // still in bed until 670
+    }
+
+    func testPhoneOutsideTheNightChangesNothing() {
+        let st = [s(0, 300, .light)]
+        XCTAssertEqual(PhoneUse.apply([span(400, 420)], to: st), st)
+    }
+
+    func testHeartRateOnlyNight() {
+        let p = SleepPeriod(onset: 0, wake: 600 * m, asleepMin: 560, inBedMin: 600, awakeEvents: 2, lowestHR: 50)
+        // Mid-night 20 minutes, then a final pickup at 580 with only 10 minutes left.
+        let r = PhoneUse.apply([span(200, 220), span(580, 590)], to: p)
+        XCTAssertEqual(r.wake, 580 * m)
+        XCTAssertEqual(r.asleepMin, 560 - 20 - 20)
+        XCTAssertEqual(r.inBedMin, 600)
+    }
+}
