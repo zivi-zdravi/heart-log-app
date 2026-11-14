@@ -60,7 +60,13 @@ struct SleepView: View {
     @State private var samples: [Sample] = []
     @State private var loaded = false
     @State private var adjusting = false
+    @State private var band: BandDay?
+    @State private var pastAsleep: [Double] = []
+    @State private var pastDeep: [Double] = []
+    @State private var usualWakeMin: Double?
     @ObservedObject private var settings = SettingsStore.shared
+
+    private var stages: [BandStage]? { band?.stages.flatMap { $0.isEmpty ? nil : $0 } }
 
     private var isToday: Bool { Calendar.current.isDateInToday(day) }
     private var nightOf: Date { Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day }
@@ -75,8 +81,13 @@ struct SleepView: View {
                     }
                     if let r = record, let p = r.sleep {
                         scoreCard(r, p)
-                        if !r.isWhoop { chartCard(p) }
-                        components(r, p)
+                        if let st = stages {
+                            hypnogram(st)
+                            stageTotals(st)
+                        } else if !r.isWhoop {
+                            chartCard(p)
+                        }
+                        againstUsual(r, p)
                         tiles(r, p)
                     } else if loaded {
                         Card {
@@ -88,9 +99,7 @@ struct SleepView: View {
                     if loaded, record?.isWhoop != true {
                         Button("Adjust bedtime or wake time") { adjusting = true }.buttonStyle(TintButton(color: Theme.text))
                     }
-                    Text(record?.isWhoop == true
-                         ? "This night comes from your WHOOP history, so it shows WHOOP's own numbers."
-                         : "Sleep stages aren't shown, because heart rate alone can't measure them reliably. Scores are estimates.")
+                    Text(footnote)
                         .font(.system(size: 13)).foregroundColor(Theme.dim)
                 }
                 .padding(.horizontal, 20)
@@ -111,6 +120,17 @@ struct SleepView: View {
         }
     }
 
+    private var footnote: String {
+        if record?.isWhoop == true && stages == nil {
+            return "This night comes from your WHOOP history, so it shows WHOOP's own numbers."
+        }
+        if stages != nil {
+            let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap." : ""
+            return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(from)"
+        }
+        return "Sleep stages show for nights the band link downloads, because they need the band's movement data. Scores are estimates."
+    }
+
     private func reload() async {
         let d = day
         let r = await DayLoader.load(d)
@@ -118,9 +138,31 @@ struct SleepView: View {
         if let p = r?.sleep, r?.isWhoop == false {
             s = await Task.detached { Store.shared.readSamples(from: p.onset - 15 * 60_000, to: p.wake + 15 * 60_000) }.value
         }
+        let settingsNow = SettingsStore.shared.value
+        let past: (asleep: [Double], deep: [Double], wake: Double?, band: BandDay?) = await Task.detached {
+            let cal = Calendar.current
+            let key = DayEngine.shared.key(d)
+            let from = cal.date(byAdding: .day, value: -28, to: d) ?? d
+            let to = cal.date(byAdding: .day, value: -1, to: d) ?? d
+            let records = DayEngine.shared.records(from: from, to: to, settings: settingsNow)
+            let asleep = records.compactMap { $0.sleep?.asleepMin }
+            let wakes = records.suffix(14).compactMap { $0.sleep }.map { p -> Double in
+                let w = Date(timeIntervalSince1970: Double(p.wake) / 1000)
+                let c = cal.dateComponents([.hour, .minute], from: w)
+                return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
+            }
+            let bandDays = BandHistoryStore.shared.days
+            let deep = (1...28).compactMap { cal.date(byAdding: .day, value: -$0, to: d) }
+                .compactMap { bandDays[DayEngine.shared.key($0)]?.stageMinutes[.deep] }
+            return (asleep, deep, SleepMath.median(wakes), bandDays[key])
+        }.value
         guard d == day else { return }
         record = r
         samples = s
+        band = past.band
+        pastAsleep = past.asleep
+        pastDeep = past.deep
+        usualWakeMin = past.wake
         loaded = true
     }
 
@@ -142,6 +184,7 @@ struct SleepView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     (Text(Theme.minutes(p.asleepMin)).font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.text) + Text(" asleep"))
                     Text("\(Theme.clock(p.onset)) to \(Theme.clock(p.wake))")
+                    if p.inBedMin > 0 { Text("\(Int(p.efficiency.rounded()))% of \(Theme.minutes(p.inBedMin)) in bed") }
                 }
                 .font(.system(size: 14)).foregroundColor(Theme.dim)
             }
@@ -163,34 +206,169 @@ struct SleepView: View {
         }
     }
 
-    private func components(_ r: DayRecord, _ p: SleepPeriod) -> some View {
-        let hours = r.sleepNeedMin.map { min(100, p.asleepMin / max(1, $0) * 100) }
-        return Card {
-            Text("What went into the score").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
-            part("Hours vs. needed\(r.sleepNeedMin.map { " (\(Theme.minutes($0)))" } ?? "")", hours)
-            part("Consistency", r.consistency)
-            part(r.isWhoop ? "Efficiency" : "Efficiency (rough)", p.efficiency)
+    private static let deepBlue = Color(hex: 0x6E97D6)
+
+    private func stageColor(_ k: BandStage.Kind) -> Color {
+        switch k {
+        case .wake: return Theme.orange
+        case .rem: return Theme.green
+        case .light: return Theme.blue
+        case .deep: return Self.deepBlue
         }
     }
 
-    private func part(_ label: String, _ value: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func stageName(_ k: BandStage.Kind) -> String {
+        switch k {
+        case .wake: return "Awake"
+        case .rem: return "REM"
+        case .light: return "Light"
+        case .deep: return "Deep"
+        }
+    }
+
+    private func hypnogram(_ st: [BandStage]) -> some View {
+        let first = st.first?.start ?? 0
+        let last = st.last?.end ?? 0
+        return Card {
+            Text("Through the night").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            Chart {
+                ForEach(Array(st.enumerated()), id: \.offset) { item in
+                    RectangleMark(xStart: .value("Start", Date(timeIntervalSince1970: Double(item.element.start) / 1000)),
+                                  xEnd: .value("End", Date(timeIntervalSince1970: Double(item.element.end) / 1000)),
+                                  y: .value("Stage", stageName(item.element.kind)),
+                                  height: .fixed(18))
+                        .foregroundStyle(stageColor(item.element.kind))
+                        .cornerRadius(3)
+                }
+            }
+            .chartYScale(domain: ["Awake", "REM", "Light", "Deep"])
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .leading) { _ in AxisValueLabel().foregroundStyle(Theme.dim) }
+            }
+            .frame(height: 150)
+            .accessibilityLabel("Sleep stage timeline from \(Theme.clock(first)) to \(Theme.clock(last))")
+            HStack {
+                Text(Theme.clock(first))
+                Spacer()
+                Text(Theme.clock(first + (last - first) / 2))
+                Spacer()
+                Text(Theme.clock(last))
+            }
+            .font(.system(size: 12)).foregroundColor(Theme.dim)
+            Text("Longest unbroken stretch \(Theme.minutes(StageMath.longestStretch(st))). Wake-ups shorter than about 5 minutes don't show.")
+                .font(.system(size: 12)).foregroundColor(Theme.dim)
+        }
+    }
+
+    private func stageTotals(_ st: [BandStage]) -> some View {
+        let totals = BandDay(day: "", source: "", stages: st).stageMinutes
+        return Card {
+            Text("Stage totals").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            ForEach([BandStage.Kind.deep, .rem, .light, .wake], id: \.self) { k in
+                let m = totals[k] ?? 0
+                HStack {
+                    Circle().fill(stageColor(k)).frame(width: 9, height: 9)
+                    Text(stageName(k))
+                    Spacer()
+                    Text(StageMath.range(k, minutes: m).map { "\(Theme.minutes($0.low)) to \(Theme.minutes($0.high))" } ?? Theme.minutes(m))
+                        .fontWeight(.semibold)
+                }
+                .font(.system(size: 14)).foregroundColor(Theme.text)
+            }
+            Text("Each stage shows a range rather than one exact number, because a wrist band can't measure stages precisely. Awake time is measured directly, so it's a single figure.")
+                .font(.system(size: 12)).foregroundColor(Theme.dim)
+        }
+    }
+
+    private func againstUsual(_ r: DayRecord, _ p: SleepPeriod) -> some View {
+        let usualSleep = StageMath.usualRange(pastAsleep)
+        let deepMin = stages.map { BandDay(day: "", source: "", stages: $0).stageMinutes[.deep] ?? 0 }
+        let usualDeep = StageMath.usualRange(pastDeep, minimum: 3)
+        return Card {
+            HStack(spacing: 4) {
+                Text("Against your usual").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                if !pastAsleep.isEmpty { Text("(\(pastAsleep.count) nights)").font(.system(size: 15)).foregroundColor(Theme.dim) }
+            }
+            usualRow("Total sleep", value: Theme.minutes(p.asleepMin), marker: (p.asleepMin, p.asleepMin), usual: usualSleep,
+                     note: usualSleep.map { (u: StageMath.Range) -> String in
+                         let span = "(\(Theme.minutes(u.low)) to \(Theme.minutes(u.high)))"
+                         switch StageMath.compare(p.asleepMin, to: u) {
+                         case 1: return "\(Theme.minutes(p.asleepMin - u.high)) more than usual \(span)"
+                         case -1: return "\(Theme.minutes(u.low - p.asleepMin)) less than usual \(span)"
+                         default: return "Within your usual \(span)"
+                         }
+                     } ?? "Building your usual: \(pastAsleep.count) of 5 nights")
+            if let d = deepMin, let range = StageMath.range(.deep, minutes: d) {
+                usualRow("Deep sleep", value: "\(Theme.minutes(range.low)) to \(Theme.minutes(range.high))", marker: (range.low, range.high), usual: usualDeep,
+                         note: usualDeep.map { (u: StageMath.Range) -> String in
+                             let span = "(\(Theme.minutes(u.low)) to \(Theme.minutes(u.high)))"
+                             if range.low > u.high { return "More than usual \(span)" }
+                             if range.high < u.low { return "Less than usual \(span)" }
+                             return "Too close to your usual to call \(span)"
+                         } ?? "Building your usual: \(pastDeep.count) of 3 nights")
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Slept through your time in bed")
+                    Spacer()
+                    Text("\(Int(p.efficiency.rounded()))%").fontWeight(.semibold)
+                }
+                .font(.system(size: 14)).foregroundColor(Theme.text)
+                Bar(fraction: p.efficiency / 100, color: Theme.green, height: 8)
+            }
+        }
+    }
+
+    private func usualRow(_ label: String, value: String, marker: (Double, Double), usual: StageMath.Range?, note: String) -> some View {
+        let top = max(marker.1, usual?.high ?? 0) * 1.25
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(label)
                 Spacer()
-                Text(value.map { "\(Int($0.rounded()))%" } ?? "--").fontWeight(.semibold)
+                Text(value).fontWeight(.semibold)
             }
             .font(.system(size: 14)).foregroundColor(Theme.text)
-            Bar(fraction: (value ?? 0) / 100, color: Theme.level(value), height: 8)
+            GeometryReader { g in
+                let w = g.size.width
+                func x(_ v: Double) -> CGFloat { top > 0 ? CGFloat(min(1, max(0, v / top))) * w : 0 }
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.track)
+                    if let u = usual {
+                        Capsule().fill(Theme.line).frame(width: max(4, x(u.high) - x(u.low))).offset(x: x(u.low))
+                    }
+                    Capsule().fill(Theme.blue.opacity(marker.0 == marker.1 ? 1 : 0.7))
+                        .frame(width: max(4, x(marker.1) - x(marker.0))).offset(x: x(marker.0) - (marker.0 == marker.1 ? 2 : 0))
+                }
+            }
+            .frame(height: 8)
+            .accessibilityHidden(true)
+            Text(note).font(.system(size: 12)).foregroundColor(Theme.dim)
         }
+    }
+
+    /// Tonight's targets: wake at your usual time, go to bed early enough to meet your need.
+    private var targets: (bed: Int64, wake: Int64)? {
+        guard isToday, let wakeMin = usualWakeMin, let need = record?.sleepNeedMin else { return nil }
+        let cal = Calendar.current
+        guard let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date())) else { return nil }
+        let wake = tomorrow.addingTimeInterval(wakeMin * 60)
+        let bed = wake.addingTimeInterval(-need * 60)
+        return (Int64(bed.timeIntervalSince1970 * 1000), Int64(wake.timeIntervalSince1970 * 1000))
     }
 
     private func tiles(_ r: DayRecord, _ p: SleepPeriod) -> some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            Tile(title: isToday ? "Tonight's need" : "Sleep need", value: r.sleepNeedMin.map { Theme.minutes($0) } ?? "--")
             Tile(title: "Sleep debt", value: r.debtMin.map { Theme.minutes($0) } ?? "--")
-            Tile(title: "Overnight HRV", value: r.hrv.map { "\(Int($0.rounded())) ms" } ?? "--")
-            Tile(title: r.isWhoop ? "Resting heart rate" : "Lowest heart rate", value: (r.isWhoop ? r.rhr : p.lowestHR).map { "\($0)" } ?? "--")
-            Tile(title: "Times awake", value: p.awakeEvents.map { "~\($0)" } ?? "--")
+            if let t = targets {
+                Tile(title: "Target bedtime", value: Theme.clock(t.bed))
+                Tile(title: "Target wake", value: Theme.clock(t.wake))
+            } else {
+                Tile(title: "Overnight HRV", value: r.hrv.map { "\(Int($0.rounded())) ms" } ?? "--")
+                let wakeUps = stages.map { StageMath.wakeUps($0) } ?? p.awakeEvents
+                Tile(title: "Times awake", value: wakeUps.map { stages != nil ? "\($0)" : "~\($0)" } ?? "--")
+            }
         }
     }
 }

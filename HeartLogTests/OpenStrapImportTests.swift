@@ -79,3 +79,34 @@ final class OpenStrapImportTests: XCTestCase {
         XCTAssertEqual(OpenStrapImport.merge(incoming, into: merged).changed, 0)
     }
 }
+
+final class StageMathTests: XCTestCase {
+    private func s(_ a: Int64, _ b: Int64, _ k: BandStage.Kind) -> BandStage { BandStage(start: a * 60_000, end: b * 60_000, kind: k) }
+
+    func testRangesWidenForHarderStages() {
+        XCTAssertEqual(StageMath.range(.deep, minutes: 100), .init(low: 55, high: 145))
+        XCTAssertEqual(StageMath.range(.light, minutes: 300), .init(low: 240, high: 360))
+        XCTAssertEqual(StageMath.range(.rem, minutes: 20), .init(low: 5, high: 35)) // 15-minute floor
+        XCTAssertNil(StageMath.range(.wake, minutes: 30))
+        XCTAssertEqual(StageMath.range(.deep, minutes: 10)?.low, 0)
+    }
+
+    func testLongestStretchAndWakeUps() {
+        let night = [s(0, 10, .wake), s(10, 100, .light), s(100, 130, .deep), s(130, 140, .wake),
+                     s(140, 200, .rem), s(200, 202, .wake), s(202, 300, .light), s(300, 320, .wake)]
+        XCTAssertEqual(StageMath.longestStretch(night), 120)
+        XCTAssertEqual(StageMath.wakeUps(night), 1) // the 2-minute wake doesn't count; edges don't count
+    }
+
+    func testUsualRangeNeedsEnoughNights() {
+        XCTAssertNil(StageMath.usualRange([400, 420, 440]))
+        XCTAssertEqual(StageMath.usualRange([400, 410, 420, 430, 440]), .init(low: 410, high: 430))
+    }
+
+    func testCompareOnlyCallsClearDifferences() {
+        let usual = StageMath.Range(low: 450, high: 510)
+        XCTAssertEqual(StageMath.compare(587, to: usual), 1)
+        XCTAssertEqual(StageMath.compare(520, to: usual), 0)
+        XCTAssertEqual(StageMath.compare(420, to: usual), -1)
+    }
+}

@@ -136,3 +136,75 @@ enum OpenStrapImport {
         return (result, changed)
     }
 }
+
+/// Night summaries from sleep stages. Wrist staging is an estimate, so stage
+/// totals are shown as ranges rather than exact minutes.
+enum StageMath {
+    struct Range: Equatable {
+        var low: Double
+        var high: Double
+    }
+
+    /// How uncertain each stage is from a wrist band, as a share of the total,
+    /// with a 15-minute floor. Deep is the hardest to call, light the easiest.
+    /// Awake time is measured directly, so it has no range.
+    static func range(_ kind: BandStage.Kind, minutes: Double) -> Range? {
+        let share: Double
+        switch kind {
+        case .deep: share = 0.45
+        case .rem: share = 0.35
+        case .light: share = 0.2
+        case .wake: return nil
+        }
+        let spread = max(15, minutes * share)
+        return Range(low: max(0, minutes - spread), high: minutes + spread)
+    }
+
+    /// Longest run without a wake block, in minutes.
+    static func longestStretch(_ stages: [BandStage]) -> Double {
+        var best: Double = 0
+        var runStart: Int64?
+        var runEnd: Int64 = 0
+        for s in stages {
+            if s.kind == .wake {
+                if let a = runStart { best = max(best, Double(runEnd - a) / 60_000) }
+                runStart = nil
+            } else {
+                if runStart == nil { runStart = s.start }
+                runEnd = s.end
+            }
+        }
+        if let a = runStart { best = max(best, Double(runEnd - a) / 60_000) }
+        return best
+    }
+
+    /// Wake blocks of at least 5 minutes between the first and last sleep.
+    static func wakeUps(_ stages: [BandStage]) -> Int {
+        guard let first = stages.firstIndex(where: { $0.kind != .wake }),
+              let last = stages.lastIndex(where: { $0.kind != .wake }), first < last else { return 0 }
+        return stages[first...last].filter { $0.kind == .wake && $0.minutes >= 5 }.count
+    }
+
+    /// The middle half of past values (25th to 75th percentile). Needs at least
+    /// `minimum` values, otherwise nil.
+    static func usualRange(_ values: [Double], minimum: Int = 5) -> Range? {
+        guard values.count >= minimum else { return nil }
+        let v = values.sorted()
+        func at(_ q: Double) -> Double {
+            let pos = q * Double(v.count - 1)
+            let i = Int(pos)
+            let frac = pos - Double(i)
+            return i + 1 < v.count ? v[i] + (v[i + 1] - v[i]) * frac : v[i]
+        }
+        return Range(low: at(0.25), high: at(0.75))
+    }
+
+    /// Whether a value is clearly outside the usual range: beyond it by more
+    /// than a quarter of the range's width (and at least 10 minutes).
+    static func compare(_ value: Double, to usual: Range) -> Int {
+        let margin = max(10, (usual.high - usual.low) / 4)
+        if value > usual.high + margin { return 1 }
+        if value < usual.low - margin { return -1 }
+        return 0
+    }
+}
