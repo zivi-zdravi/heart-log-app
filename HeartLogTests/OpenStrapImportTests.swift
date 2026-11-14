@@ -110,3 +110,23 @@ final class StageMathTests: XCTestCase {
         XCTAssertEqual(StageMath.compare(420, to: usual), -1)
     }
 }
+
+final class StageNightTests: XCTestCase {
+    private func s(_ a: Int64, _ b: Int64, _ k: BandStage.Kind) -> BandStage { BandStage(start: a * 60_000, end: b * 60_000, kind: k) }
+
+    func testNightSpansAllBlocksAndCountsSleepOnly() {
+        // 7 minutes awake before sleep, a wake-up in the middle, sleep to the end.
+        let st = [s(0, 7, .wake), s(7, 300, .light), s(300, 330, .wake), s(330, 670, .rem)]
+        let n = StageMath.night(st)!
+        XCTAssertEqual(n.start, 0)
+        XCTAssertEqual(n.end, 670 * 60_000)
+        XCTAssertEqual(n.inBedMin, 670)
+        XCTAssertEqual(n.asleepMin, 633)
+        XCTAssertEqual(StageMath.awakeDuringSleep(st), 30) // the leading 7 minutes are left out
+    }
+
+    func testNoSleepMeansNoNight() {
+        XCTAssertNil(StageMath.night([s(0, 30, .wake)]))
+        XCTAssertNil(StageMath.night([]))
+    }
+}

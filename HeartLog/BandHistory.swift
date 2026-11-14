@@ -160,6 +160,30 @@ enum StageMath {
         return Range(low: max(0, minutes - spread), high: minutes + spread)
     }
 
+    struct Night: Equatable {
+        var start: Int64
+        var end: Int64
+        var asleepMin: Double
+        var inBedMin: Double
+    }
+
+    /// The night as the stages describe it: in bed from the first block to the
+    /// last, asleep for every non-wake minute. Nil when there's no sleep at all.
+    static func night(_ stages: [BandStage]) -> Night? {
+        guard let first = stages.first, let last = stages.last,
+              stages.contains(where: { $0.kind != .wake }), last.end > first.start else { return nil }
+        let asleep = stages.filter { $0.kind != .wake }.reduce(0) { $0 + $1.minutes }
+        return Night(start: first.start, end: last.end, asleepMin: asleep, inBedMin: Double(last.end - first.start) / 60_000)
+    }
+
+    /// Minutes awake between falling asleep and the final wake, leaving out
+    /// time before first sleep and after the last.
+    static func awakeDuringSleep(_ stages: [BandStage]) -> Double {
+        guard let first = stages.firstIndex(where: { $0.kind != .wake }),
+              let last = stages.lastIndex(where: { $0.kind != .wake }), first < last else { return 0 }
+        return stages[first...last].filter { $0.kind == .wake }.reduce(0) { $0 + $1.minutes }
+    }
+
     /// Longest run without a wake block, in minutes.
     static func longestStretch(_ stages: [BandStage]) -> Double {
         var best: Double = 0

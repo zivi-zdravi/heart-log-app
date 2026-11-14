@@ -125,7 +125,7 @@ struct SleepView: View {
             return "This night comes from your WHOOP history, so it shows WHOOP's own numbers."
         }
         if stages != nil {
-            let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap." : ""
+            let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap, and its bedtime and wake time come from them." : ""
             return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(from)"
         }
         return "Sleep stages show for nights the band link downloads, because they need the band's movement data. Scores are estimates."
@@ -262,7 +262,8 @@ struct SleepView: View {
     }
 
     private func stageTotals(_ st: [BandStage]) -> some View {
-        let totals = BandDay(day: "", source: "", stages: st).stageMinutes
+        var totals = BandDay(day: "", source: "", stages: st).stageMinutes
+        totals[.wake] = StageMath.awakeDuringSleep(st)
         return Card {
             Text("Stage totals").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
             ForEach([BandStage.Kind.deep, .rem, .light, .wake], id: \.self) { k in
@@ -276,7 +277,7 @@ struct SleepView: View {
                 }
                 .font(.system(size: 14)).foregroundColor(Theme.text)
             }
-            Text("Each stage shows a range rather than one exact number, because a wrist band can't measure stages precisely. Awake time is measured directly, so it's a single figure.")
+            Text("Each stage shows a range rather than one exact number, because a wrist band can't measure stages precisely. Awake time is measured directly, so it's a single figure, counted from first falling asleep to the final wake.")
                 .font(.system(size: 12)).foregroundColor(Theme.dim)
         }
     }

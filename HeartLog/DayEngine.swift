@@ -80,7 +80,7 @@ enum Overrides {
 /// earlier days come from WHOOP history. Finished days are cached in days.json.
 final class DayEngine {
     static let shared = DayEngine()
-    static let version = 3
+    static let version = 4
 
     private struct Cache: Codable {
         var fingerprint = ""
@@ -190,6 +190,14 @@ final class DayEngine {
         let night = samples.filter { $0.t < s0 + 14 * hour }
         if let o = Overrides.all()[k] {
             r.sleep = SleepMath.period(night, onset: o.onset, wake: o.wake)
+        } else if let st = BandHistoryStore.shared.day(k)?.stages, let w = StageMath.night(st) {
+            // Band stages include movement, so they place bedtime and wake time
+            // better than heart rate alone. Heart rate still supplies the lowest
+            // value and wake-up count inside that window.
+            var p = SleepMath.period(night, onset: w.start, wake: w.end)
+            p.asleepMin = w.asleepMin
+            p.inBedMin = w.inBedMin
+            r.sleep = p
         } else {
             r.sleep = SleepMath.detect(night)
         }

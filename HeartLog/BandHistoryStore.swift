@@ -22,6 +22,7 @@ final class BandHistoryStore {
         lock.lock()
         data = fresh
         lock.unlock()
+        DayEngine.shared.invalidateAll()
     }
 
     @discardableResult
@@ -31,6 +32,7 @@ final class BandHistoryStore {
         data = merged
         JSONFile.write(merged, to: Self.url)
         lock.unlock()
+        if changed > 0 { DayEngine.shared.invalidateAll() }
         return changed
     }
 
