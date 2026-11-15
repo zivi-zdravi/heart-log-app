@@ -139,9 +139,20 @@ final class NotifyEngine {
 
     // MARK: Band events
 
+    /// Waits a few seconds for a fresh battery reading so the message can say it.
     func charger(on: Bool) {
-        send(settings.charger, id: "charger", title: on ? "Band on the charger" : "Band off the charger",
-             body: on ? "Charging started." : "Put it back on your wrist so Zdravlje keeps recording.")
+        guard settings.charger != .off else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self else { return }
+            let level = Recorder.shared.battery.map { "\($0)%" }
+            let body: String
+            if on {
+                body = level.map { "Charging started. Battery at \($0)." } ?? "Charging started."
+            } else {
+                body = level.map { "The charger has been taken off. Battery at \($0)." } ?? "The charger has been taken off."
+            }
+            self.send(self.settings.charger, id: "charger", title: on ? "Band charging" : "Charger off", body: body)
+        }
     }
 
     // MARK: Once a minute

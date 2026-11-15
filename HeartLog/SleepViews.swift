@@ -144,7 +144,7 @@ struct SleepView: View {
             let onPhone = phone.isEmpty ? "" : " Time you spent on your phone counts as awake."
             return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(onPhone)\(from)"
         }
-        return "Sleep stages show for nights the band link downloads, because they need the band's movement data. Scores are estimates."
+        return "No sleep stages for this night yet. For now they come from OpenStrap: export from OpenStrap, then in Zdravlje go to Settings, Import OpenStrap export. Once Zdravlje downloads from the band itself, they'll show on their own. Scores are estimates."
     }
 
     private func reload() async {

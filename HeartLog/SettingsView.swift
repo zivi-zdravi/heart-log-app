@@ -48,7 +48,7 @@ struct SettingsView: View {
             }
 
             Section {
-                row("Battery", r.battery.map { "\($0)%" } ?? "Unknown")
+                row("Battery", (r.battery.map { "\($0)%" } ?? "Unknown") + (r.charging == true ? ", charging" : ""))
                 row("Connection", r.recording ? r.status : "Not recording")
                 Stepper("Low battery warning at \(settings.value.lowBattery)%", value: $settings.value.lowBattery, in: 5...50, step: 5)
                 if r.recording {

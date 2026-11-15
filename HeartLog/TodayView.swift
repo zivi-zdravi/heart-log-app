@@ -141,12 +141,12 @@ struct TodayView: View {
                 .background(Theme.card)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .accessibilityLabel("Band battery \(rec.battery.map { "\($0) percent" } ?? "unknown"). Open settings")
+            .accessibilityLabel("Band battery \(rec.battery.map { "\($0) percent" } ?? "unknown")\(rec.charging == true ? ", charging" : ""). Open settings")
         }
     }
 
     @ViewBuilder private var alerts: some View {
-        if let b = rec.battery, b <= settings.value.lowBattery {
+        if rec.charging != true, let b = rec.battery, b <= settings.value.lowBattery {
             Card { Text("Band battery is at \(b)%. Charge it soon.").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.orange) }
         }
         if let expiry = Signing.expiry, expiry.timeIntervalSinceNow < 2 * 86_400 {
@@ -194,11 +194,13 @@ struct TodayView: View {
     }
 
     private var batterySymbol: String {
+        if rec.charging == true { return "battery.100.bolt" }
         guard let b = rec.battery else { return "battery.0" }
         return b >= 88 ? "battery.100" : b >= 63 ? "battery.75" : b >= 38 ? "battery.50" : b >= 13 ? "battery.25" : "battery.0"
     }
 
     private var batteryColor: Color {
+        if rec.charging == true { return Theme.green }
         guard let b = rec.battery else { return Theme.dim }
         return b <= settings.value.lowBattery ? Theme.orange : Theme.green
     }

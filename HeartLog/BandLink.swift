@@ -229,8 +229,10 @@ final class BandLink: ObservableObject {
         case BandEventID.chargingOn, BandEventID.chargingOff:
             // Only events happening now, not ones replayed from the band's memory.
             let age = Date().timeIntervalSince1970 - (Double(ts) - Double(clockOffset ?? 0))
-            log?("charger", id == UInt16(BandEventID.chargingOn) ? "on" : "off")
-            if abs(age) < 60 { NotifyEngine.shared.charger(on: id == UInt16(BandEventID.chargingOn)) }
+            let on = id == UInt16(BandEventID.chargingOn)
+            log?("charger", on ? "on" : "off")
+            Recorder.shared.setCharging(on)
+            if abs(age) < 60 { NotifyEngine.shared.charger(on: on) }
         default:
             break
         }

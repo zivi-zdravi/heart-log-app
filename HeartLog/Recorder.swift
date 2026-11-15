@@ -25,6 +25,8 @@ final class Recorder: NSObject, ObservableObject {
     @Published var bpm = 0
     @Published var status = "Not connected"
     @Published var battery: Int?
+    /// From the band's charger events (nil until one arrives, or after a disconnect).
+    @Published var charging: Bool?
     @Published var bands: [FoundBand] = []
     @Published var scanning = false
     @Published var recording = false
@@ -121,6 +123,7 @@ final class Recorder: NSObject, ObservableObject {
         if let b = band { central.cancelPeripheralConnection(b) }
         band = nil
         batteryCharacteristic = nil
+        charging = nil
         BandLink.shared.reset()
         NotifyEngine.shared.recordingStopped()
         bpm = 0
@@ -172,7 +175,17 @@ final class Recorder: NSObject, ObservableObject {
         bpm = hr
         readings += 1
         if !rr.isEmpty { withBeatTiming += 1 }
-        if readings % 600 == 0, let c = batteryCharacteristic, let b = band { b.readValue(for: c) }
+        // Every minute while charging, so the percentage climbs on screen; every 5 otherwise.
+        if readings % (charging == true ? 60 : 300) == 0 { refreshBattery() }
+    }
+
+    func refreshBattery() {
+        if let c = batteryCharacteristic, let b = band { b.readValue(for: c) }
+    }
+
+    func setCharging(_ on: Bool) {
+        charging = on
+        refreshBattery()
     }
 }
 
@@ -249,6 +262,7 @@ extension Recorder: CBPeripheralDelegate {
             } else if c.uuid == batChar {
                 batteryCharacteristic = c
                 p.readValue(for: c)
+                if c.properties.contains(.notify) { p.setNotifyValue(true, for: c) }
             } else if c.uuid == firmwareChar || c.uuid == hardwareChar {
                 p.readValue(for: c)
             }
@@ -263,6 +277,8 @@ extension Recorder: CBPeripheralDelegate {
             handleHR(data)
             BandLink.shared.tick()
         } else if c.uuid == batChar, let v = data.first {
+            // Falling means it's off the charger even if that event was missed.
+            if let old = battery, Int(v) < old, charging == true { charging = false }
             battery = Int(v)
             log("battery", String(v))
         } else if c.uuid == firmwareChar || c.uuid == hardwareChar {
