@@ -10,7 +10,8 @@ struct AIDescribeCard: View {
     let done: () -> Void
     @ObservedObject private var ai = AIStore.shared
     @State private var text = ""
-    @State private var go: AIMealView.Input?
+    @State private var input: AIMealView.Input?
+    @State private var going = false
     @State private var camera = false
 
     var body: some View {
@@ -29,7 +30,7 @@ struct AIDescribeCard: View {
             }
             HStack(spacing: 10) {
                 if ai.settings.describe {
-                    Button("Work it out") { go = .text(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                    Button("Work it out") { input = .text(text.trimmingCharacters(in: .whitespacesAndNewlines)); going = true }
                         .buttonStyle(TintButton(color: Theme.blue))
                         .disabled(text.trimmingCharacters(in: .whitespaces).count < 3)
                 }
@@ -44,11 +45,13 @@ struct AIDescribeCard: View {
         }
         .padding(16)
         .background(Theme.card).clipShape(RoundedRectangle(cornerRadius: 16))
-        .navigationDestination(item: $go) { input in AIMealView(day: day, slot: slot, input: input, done: done) }
+        .navigationDestination(isPresented: $going) {
+            if let input { AIMealView(day: day, slot: slot, input: input, done: done) }
+        }
         .sheet(isPresented: $camera) {
             MealCamera { image in
                 camera = false
-                if let image { go = .photo(image) }
+                if let image { input = .photo(image); going = true }
             }
             .ignoresSafeArea()
         }
@@ -277,8 +280,8 @@ struct AIMealView: View {
         do {
             let r: AIMealResult
             switch input {
-            case .text(let t): r = try await AIClient.meal(text: t)
-            case .photo(let p): r = try await AIClient.meal(photo: p, note: note)
+            case .text(let t): r = try await AIClient.meal(text: t, avoid: store.settings.avoid)
+            case .photo(let p): r = try await AIClient.meal(photo: p, note: note, avoid: store.settings.avoid)
             }
             foods = await resolve(r)
             low = r.calories_low
@@ -295,7 +298,7 @@ struct AIMealView: View {
         working = true
         defer { working = false }
         do {
-            let r = try await AIClient.meal(text: extra)
+            let r = try await AIClient.meal(text: extra, avoid: store.settings.avoid)
             foods += await resolve(r)
             low += r.calories_low
             high += r.calories_high
@@ -460,7 +463,7 @@ struct AskView: View {
                         }
                         .padding(20)
                     }
-                    .onChange(of: turns.count) { _, n in withAnimation { proxy.scrollTo(n - 1, anchor: .bottom) } }
+                    .onChange(of: turns.count) { n in withAnimation { proxy.scrollTo(n - 1, anchor: .bottom) } }
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
@@ -514,7 +517,8 @@ struct AskView: View {
         let history = turns
         turns.append((role: "user", text: q))
         asking = true
-        let ctx = await Task.detached { AskContext.build(days: days) }.value
+        let meals = AskContext.mealSummaries(days: days)
+        let ctx = await Task.detached { AskContext.build(days: days, meals: meals) }.value
         sent = ctx.description
         do {
             let a = try await AIClient.ask(question: q, context: ctx.json, history: history)
@@ -539,12 +543,30 @@ enum AskContext {
         return f
     }()
 
-    static func build(days: Int) -> (json: [String: Any], description: String) {
+    struct MealDay { var kcal: Int; var protein: Int; var first: Int64; var last: Int64 }
+
+    /// Meal totals and times per day, read on the main actor where meals live.
+    @MainActor
+    static func mealSummaries(days: Int) -> [String: MealDay] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var out: [String: MealDay] = [:]
+        for i in 0..<days {
+            guard let d = cal.date(byAdding: .day, value: -i, to: today) else { continue }
+            let k = DayEngine.shared.key(d)
+            let e = MealStore.shared.entries(k)
+            guard let first = e.first, let last = e.last else { continue }
+            let t = MealStore.shared.total(k)
+            out[k] = MealDay(kcal: Int(t.kcal), protein: Int(t.protein), first: first.time, last: last.time)
+        }
+        return out
+    }
+
+    static func build(days: Int, meals mealDays: [String: MealDay]) -> (json: [String: Any], description: String) {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let from = cal.date(byAdding: .day, value: -(days - 1), to: today) ?? today
         let records = DayEngine.shared.records(from: from, to: today, settings: SettingsStore.shared.value)
-        let meals = MealStore.shared
         let water = WaterStore.shared.data
         let bands = BandHistoryStore.shared.days
         let hm: (Int64) -> String = { ms in
@@ -576,13 +598,11 @@ enum AskContext {
                 d["rem_min"] = Int(m[.rem] ?? 0)
                 d["light_min"] = Int(m[.light] ?? 0)
             }
-            let entries = meals.entries(r.day)
-            if !entries.isEmpty {
-                let t = meals.total(r.day)
-                d["calories_eaten"] = Int(t.kcal)
-                d["protein_g"] = Int(t.protein)
-                d["first_meal"] = hm(entries.first!.time)
-                d["last_meal"] = hm(entries.last!.time)
+            if let m = mealDays[r.day] {
+                d["calories_eaten"] = m.kcal
+                d["protein_g"] = m.protein
+                d["first_meal"] = hm(m.first)
+                d["last_meal"] = hm(m.last)
             }
             if water.ounces(r.day) > 0 { d["water_oz"] = water.ounces(r.day) }
             rows.append(d.compactMapValues { $0 is NSNull ? nil : $0 })
@@ -641,7 +661,7 @@ struct AISettingsView: View {
                         Stepper(value: $limit, in: 1...200, step: 5) {
                             HStack { Text("Monthly limit"); Spacer(); Text(String(format: "$%.0f", limit)).fontWeight(.semibold) }
                         }
-                        .onChange(of: limit) { _, v in Task { try? await AIClient.setLimit(v) } }
+                        .onChange(of: limit) { v in Task { try? await AIClient.setLimit(v) } }
                     } else {
                         HStack { Text("Monthly limit"); Spacer(); Text(String(format: "$%.0f", s.limitUsd)).fontWeight(.semibold) }
                     }

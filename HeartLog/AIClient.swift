@@ -121,8 +121,8 @@ enum AIClient {
         _ = try await call("v1/limit", body: ["limitUsd": usd], as: R.self)
     }
 
-    static func meal(text: String? = nil, photo: UIImage? = nil, note: String? = nil) async throws -> AIMealResult {
-        var body: [String: Any] = ["avoid": MealStore.shared.settings.avoid]
+    static func meal(text: String? = nil, photo: UIImage? = nil, note: String? = nil, avoid: [String] = []) async throws -> AIMealResult {
+        var body: [String: Any] = ["avoid": avoid]
         if let text { body["text"] = text }
         if let note, !note.isEmpty { body["note"] = note }
         if let photo, let jpeg = shrink(photo).jpegData(compressionQuality: 0.7) {
