@@ -60,6 +60,8 @@ struct SleepView: View {
     @State private var samples: [Sample] = []
     @State private var loaded = false
     @State private var adjusting = false
+    @State private var showAlarm = false
+    @ObservedObject private var alarm = AlarmStore.shared
     @State private var band: BandDay?
     @State private var pastAsleep: [Double] = []
     @State private var pastDeep: [Double] = []
@@ -100,6 +102,8 @@ struct SleepView: View {
                                 .font(.system(size: 14)).foregroundColor(Theme.dim)
                         }
                     }
+                    Button(alarm.next.map { "Band alarm · \(AlarmView.dayTime($0))" } ?? "Band alarm · Off") { showAlarm = true }
+                        .buttonStyle(TintButton(color: Theme.text))
                     if loaded, record?.isWhoop != true {
                         Button("Adjust bedtime or wake time") { adjusting = true }.buttonStyle(TintButton(color: Theme.text))
                     }
@@ -119,6 +123,12 @@ struct SleepView: View {
         }
         .task(id: day) { await reload() }
         .followToday($day)
+        .sheet(isPresented: $showAlarm) {
+            NavigationStack {
+                AlarmView()
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAlarm = false } } }
+            }
+        }
         .sheet(isPresented: $adjusting) {
             AdjustSleep(day: day, current: record?.sleep) { Task { await reload() } }
         }

@@ -260,6 +260,7 @@ extension Recorder: CBPeripheralDelegate {
             BandLink.shared.didReceive(data)
         } else if c.uuid == hrChar {
             handleHR(data)
+            BandLink.shared.tick()
         } else if c.uuid == batChar, let v = data.first {
             battery = Int(v)
             log("battery", String(v))

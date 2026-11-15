@@ -4,10 +4,10 @@ import Foundation
 /// The band's private channel, alongside the standard heart rate broadcast on
 /// the same Bluetooth connection.
 ///
-/// Phase 1 (this file): a read-only handshake. On every connect it opens the
-/// command channel, says HELLO, and reads the band's clock. Nothing here
-/// changes anything on the band, so it is safe while OpenStrap is also
-/// connected. History download, events and the alarm come in later phases.
+/// On every connect it opens the command channel, says HELLO and reads the
+/// band's clock. It also keeps the next wake alarm from the weekly schedule
+/// on the band. Commands go through BandProtocol's guarded builder, which
+/// refuses anything that could erase data or change firmware.
 ///
 /// Recorder forwards the relevant CoreBluetooth callbacks; all calls arrive on
 /// the main queue (Recorder's central runs there).
@@ -22,11 +22,19 @@ final class BandLink: ObservableObject {
         case noAnswer    // channel open but nothing came back in time
     }
 
+    enum AlarmStatus: Equatable {
+        case idle
+        case sending
+        case saved
+        case failed(String)
+    }
+
     @Published private(set) var state: State = .notFound
     @Published private(set) var generation: BandGeneration?
     /// Band clock minus phone clock, in seconds. Alarms are armed against this.
     @Published private(set) var clockOffset: Int?
     @Published private(set) var lastAnswer: Date?
+    @Published private(set) var alarmStatus: AlarmStatus = .idle
 
     /// Recorder supplies its event logger so link activity lands in the session log.
     var log: ((String, String) -> Void)?
@@ -44,9 +52,14 @@ final class BandLink: ObservableObject {
     /// Our own sequence numbers start high to stay clear of other apps'
     /// traffic, which iOS also delivers to us on a shared connection.
     private var sequence: UInt8 = 0xA0
-    /// Commands we sent and are waiting on, by opcode.
-    private var pending: [UInt8: Date] = [:]
+    /// Replies we're waiting on, by opcode.
+    private var pending: [UInt8: (BandCommandReply) -> Void] = [:]
     private var handshakeToken = 0
+    private var lastTick = Date.distantPast
+    private var lastAlarmAttempt = Date.distantPast
+    private var alarmInFlight = false
+
+    var ready: Bool { state == .answering && writeCharacteristic != nil && peripheral?.state == .connected }
 
     // MARK: Forwarded callbacks
 
@@ -99,17 +112,15 @@ final class BandLink: ObservableObject {
                 log?("band_link", "bad frame")
                 continue
             }
-            guard let reply = BandCommandReply(frame), pending.removeValue(forKey: reply.opcode) != nil else {
+            guard let reply = BandCommandReply(frame), let handler = pending.removeValue(forKey: reply.opcode) else {
                 continue // another app's traffic, or not a command reply
             }
             lastAnswer = Date()
-            state = .answering
-            if let band = reply.clockSeconds {
-                clockOffset = Int(band) - Int(Date().timeIntervalSince1970)
-                log?("band_clock", "offset \(clockOffset!)s")
-            } else {
-                log?("band_reply", "op \(reply.opcode) status \(reply.status)")
+            if state != .answering {
+                state = .answering
+                planAlarm(force: true)
             }
+            handler(reply)
         }
     }
 
@@ -121,12 +132,21 @@ final class BandLink: ObservableObject {
         notifyUUID = nil
         reassembler = nil
         pending.removeAll()
+        alarmInFlight = false
         if state != .notFound { state = .opening }
     }
 
     /// Call when discovery finished and no private service was found.
     func markNotFound() {
         if generation == nil { state = .notFound }
+    }
+
+    /// Call often (Recorder calls it with each heart rate reading). Checks the
+    /// alarm about once a minute: after one fires, the next one goes on.
+    func tick() {
+        guard Date().timeIntervalSince(lastTick) >= 60 else { return }
+        lastTick = Date()
+        planAlarm(force: false)
     }
 
     // MARK: Handshake
@@ -140,10 +160,10 @@ final class BandLink: ObservableObject {
         let first: Double = g == .gen5 ? 0.6 : 0.1
         DispatchQueue.main.asyncAfter(deadline: .now() + first) { [weak self] in
             guard let self, token == self.handshakeToken else { return }
-            self.send(BandOpcode.hello(g)) { BandCommand.hello(sequence: $0, generation: g) }
+            self.send(BandOpcode.hello(g), BandCommand.hello(sequence: self.sequence, generation: g)) { _ in }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 guard let self, token == self.handshakeToken else { return }
-                self.send(BandOpcode.getClock) { BandCommand.getClock(sequence: $0, generation: g) }
+                self.readClock { _ in }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
                 guard let self, token == self.handshakeToken, self.state == .waiting else { return }
@@ -153,12 +173,140 @@ final class BandLink: ObservableObject {
         }
     }
 
-    private func send(_ opcode: UInt8, _ make: (UInt8) -> [UInt8]) {
-        guard let p = peripheral, let c = writeCharacteristic, p.state == .connected else { return }
-        let frame = make(sequence)
+    private func readClock(_ done: @escaping (Bool) -> Void) {
+        guard let g = generation else { return done(false) }
+        send(BandOpcode.getClock, BandCommand.getClock(sequence: sequence, generation: g)) { [weak self] reply in
+            guard let self else { return }
+            if let band = reply.clockSeconds {
+                self.clockOffset = Int(band) - Int(Date().timeIntervalSince1970)
+                self.log?("band_clock", "offset \(self.clockOffset!)s")
+                done(true)
+            } else {
+                done(false)
+            }
+        }
+    }
+
+    // MARK: Alarm
+
+    /// Call when the schedule is edited.
+    func alarmScheduleChanged() {
+        lastAlarmAttempt = .distantPast
+        planAlarm(force: true)
+    }
+
+    /// Puts the schedule's next alarm on the band, or clears the band's alarm
+    /// when nothing is scheduled. Does nothing when the band already holds the
+    /// right one.
+    private func planAlarm(force: Bool) {
+        guard ready, !alarmInFlight else { return }
+        let store = AlarmStore.shared
+        let target = store.next
+        let armed = store.armed
+        if let target {
+            if let a = armed, a.confirmed, abs(a.wake.timeIntervalSince(target)) < 1 {
+                alarmStatus = .saved
+                return
+            }
+        } else {
+            if armed == nil { alarmStatus = .idle; return }
+        }
+        // A failed attempt is retried every five minutes, not every minute.
+        guard force || Date().timeIntervalSince(lastAlarmAttempt) >= 300 else { return }
+        lastAlarmAttempt = Date()
+        if let target { arm(target) } else { clearAlarm() }
+    }
+
+    private func arm(_ wake: Date) {
+        guard let g = generation else { return }
+        alarmInFlight = true
+        alarmStatus = .sending
+        let go: (Int) -> Void = { [weak self] offset in
+            guard let self else { return }
+            // The band fires on its own clock, so convert to its frame.
+            let strapTime = wake.addingTimeInterval(TimeInterval(offset))
+            let frame = (try? BandCommand.build(sequence: self.sequence, opcode: BandOpcode.setAlarmTime,
+                                                payload: BandAlarm.setBody(strapTime, generation: g), generation: g)) ?? []
+            self.send(BandOpcode.setAlarmTime, frame) { [weak self] reply in
+                guard let self else { return }
+                self.alarmInFlight = false
+                if reply.succeeded {
+                    AlarmStore.shared.armed = .init(wake: wake, confirmed: true)
+                    self.alarmStatus = .saved
+                    self.log?("alarm_set", "\(Int(wake.timeIntervalSince1970))")
+                } else {
+                    self.alarmStatus = .failed("The band didn't accept the alarm (status \(reply.status)).")
+                    self.log?("alarm_refused", "status \(reply.status)")
+                }
+            }
+            self.timeout(BandOpcode.setAlarmTime)
+        }
+        if let offset = clockOffset, abs(offset) <= 60 {
+            go(offset)
+        } else {
+            // Clock unknown or far off: set it from the phone, then read it back.
+            let frame = (try? BandCommand.build(sequence: sequence, opcode: BandOpcode.setClock,
+                                                payload: BandAlarm.setClockBody(Date()), generation: g)) ?? []
+            send(BandOpcode.setClock, frame) { [weak self] _ in
+                self?.readClock { [weak self] ok in
+                    guard let self else { return }
+                    if ok, let offset = self.clockOffset, abs(offset) <= 60 {
+                        go(offset)
+                    } else {
+                        self.alarmInFlight = false
+                        self.alarmStatus = .failed("Couldn't line up the band's clock.")
+                    }
+                }
+            }
+            timeout(BandOpcode.setClock)
+        }
+    }
+
+    private func clearAlarm() {
+        guard let g = generation else { return }
+        alarmInFlight = true
+        alarmStatus = .sending
+        let frame = (try? BandCommand.build(sequence: sequence, opcode: BandOpcode.disableAlarm,
+                                            payload: BandAlarm.disableBody(g), generation: g)) ?? []
+        send(BandOpcode.disableAlarm, frame) { [weak self] reply in
+            guard let self else { return }
+            self.alarmInFlight = false
+            if reply.succeeded {
+                AlarmStore.shared.armed = nil
+                self.alarmStatus = .idle
+                self.log?("alarm_cleared", "")
+            } else {
+                self.alarmStatus = .failed("The band didn't clear the alarm (status \(reply.status)).")
+            }
+        }
+        timeout(BandOpcode.disableAlarm)
+    }
+
+    /// A short buzz on the wrist, to check the band hears Zdravlje.
+    func testBuzz() {
+        guard ready, let g = generation else { return }
+        let b = BandAlarm.testBuzz(g)
+        let frame = (try? BandCommand.build(sequence: sequence, opcode: b.opcode, payload: b.body, generation: g)) ?? []
+        send(b.opcode, frame) { [weak self] reply in
+            self?.log?("test_buzz", "status \(reply.status)")
+        }
+    }
+
+    /// If no reply arrives, stop waiting so the next attempt can run.
+    private func timeout(_ opcode: UInt8) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, self.pending.removeValue(forKey: opcode) != nil else { return }
+            self.alarmInFlight = false
+            if self.alarmStatus == .sending { self.alarmStatus = .failed("The band didn't answer. It will try again.") }
+        }
+    }
+
+    // MARK: Sending
+
+    private func send(_ opcode: UInt8, _ frame: [UInt8], reply: @escaping (BandCommandReply) -> Void) {
+        guard let p = peripheral, let c = writeCharacteristic, p.state == .connected, !frame.isEmpty else { return }
         sequence = sequence == 0xFF ? 0xA0 : sequence + 1
-        guard !frame.isEmpty else { return }
-        pending[opcode] = Date()
+        pending[opcode] = reply
         p.writeValue(Data(frame), for: c, type: .withResponse)
     }
 }

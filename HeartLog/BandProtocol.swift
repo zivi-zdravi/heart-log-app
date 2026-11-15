@@ -386,6 +386,61 @@ enum BandCommand {
     }
 }
 
+// MARK: - Clock and alarm
+
+/// Bodies for the clock and alarm commands, kept as pure functions so their
+/// bytes are tested exactly. Layouts match what OpenStrap ships and what has
+/// fired on gen5 (MG) bands.
+enum BandAlarm {
+    /// The slot gen5 accepts for the wake alarm (slot 0 is rejected).
+    static let gen5Slot: UInt8 = 1
+    /// gen5's "every slot" id, for cancelling.
+    static let gen5AllSlots: UInt8 = 0xFF
+
+    /// The band's stock wake buzz: eight waveform-effect slots (two active),
+    /// u16 per-effect loop control, overall loop count, max duration seconds.
+    static let wakeHaptics: [UInt8] = [47, 152, 0, 0, 0, 0, 0, 0, 0, 0, 7, 30]
+
+    /// Little-endian epoch seconds plus sub-seconds in 1/32768 s.
+    static func timestamp(_ date: Date) -> [UInt8] {
+        let ms = Int64((date.timeIntervalSince1970 * 1000).rounded())
+        let sec = UInt32(truncatingIfNeeded: ms / 1000)
+        let sub = UInt16(truncatingIfNeeded: ((ms % 1000) * 32768) / 1000)
+        return [UInt8(sec & 0xFF), UInt8((sec >> 8) & 0xFF), UInt8((sec >> 16) & 0xFF), UInt8(sec >> 24),
+                UInt8(sub & 0xFF), UInt8(sub >> 8)]
+    }
+
+    static func setClockBody(_ now: Date) -> [UInt8] { timestamp(now) + [0, 0] }
+
+    /// SET_ALARM_TIME body. gen5: 21 bytes, `[0x04][slot 1][time 6B][haptics 12B][crescendo 0]`.
+    /// gen4: 9-byte revision 1, `[0x01][time 6B][u16 haptic mode 0]`.
+    /// `strapTime` must already be in the band's clock frame.
+    static func setBody(_ strapTime: Date, generation: BandGeneration) -> [UInt8] {
+        if generation == .gen5 {
+            return [0x04, gen5Slot] + timestamp(strapTime) + wakeHaptics + [0x00]
+        }
+        return [0x01] + timestamp(strapTime) + [0x00, 0x00]
+    }
+
+    static func disableBody(_ generation: BandGeneration) -> [UInt8] {
+        generation == .gen5 ? [0x02, gen5AllSlots] : [0x01]
+    }
+
+    static func getBody(_ generation: BandGeneration) -> [UInt8] {
+        generation == .gen5 ? [0x04, gen5Slot] : [0x01]
+    }
+
+    /// A short test pulse. gen5 uses RUN_HAPTIC_PATTERN with the same waveform
+    /// pair, looped once (the wake loop of 7 feels like a stuck vibrate);
+    /// gen4 uses RUN_ALARM.
+    static func testBuzz(_ generation: BandGeneration) -> (opcode: UInt8, body: [UInt8]) {
+        if generation == .gen5 {
+            return (BandOpcode.runHapticPattern(.gen5), [0x01, 47, 152, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+        }
+        return (BandOpcode.runAlarm, [0x01])
+    }
+}
+
 /// A reply to one of our commands (packet type 0x24).
 /// Layout: inner = [0x24][seq][opcode][echoed request seq][status][body…].
 /// Status 1 means success. Check it before trusting the body: a failed reply

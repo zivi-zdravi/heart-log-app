@@ -264,6 +264,7 @@ struct SettingsView: View {
                 } else {
                     HistoryStore.shared.reload()
                 }
+                AlarmStore.shared.reload()
                 if result.deferred.contains(BandHistoryStore.fileName), let b = try BackupArchive.extract(url, name: BandHistoryStore.fileName) {
                     BandHistoryStore.shared.merge(json: b)
                 } else {
