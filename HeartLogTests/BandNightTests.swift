@@ -92,8 +92,11 @@ final class BandNightTests: XCTestCase {
         let secs = night()
         let w = try XCTUnwrap(BandNight.window(secs))
         // Starts at the 15-minute "still", runs through the mid-night wake (under 30 min), ends at minute 440.
-        XCTAssertEqual(w.start, 1_800_000_000 - 1_800_000_000 % 60 + 15 * 60)
-        XCTAssertEqual(w.end, 1_800_000_000 - 1_800_000_000 % 60 + 440 * 60 + 60, accuracy: 120)
+        let base: Int64 = 1_800_000_000 - 1_800_000_000 % 60
+        let wantStart: Int64 = base + 15 * 60
+        let wantEnd: Int64 = base + 440 * 60
+        XCTAssertEqual(w.start, wantStart)
+        XCTAssertLessThanOrEqual(abs(w.end - wantEnd), 120)
     }
 
     func testNoWindowWithoutSleep() {
@@ -123,8 +126,8 @@ final class BandNightTests: XCTestCase {
         let asleep = (mins[.light] ?? 0) + (mins[.deep] ?? 0) + (mins[.rem] ?? 0)
         XCTAssertGreaterThan(asleep, 330, "most of the 7 hours reads as sleep")
         // The mid-night wake-up (minutes 220-235 from the start) shows as wake.
-        let wakeUp = 1_800_000_000 + Int64(227 * 60)
-        let block = stages.first { $0.start <= wakeUp * 1000 && $0.end > wakeUp * 1000 }
+        let wakeUpMs: Int64 = (1_800_000_000 + 227 * 60) * 1000
+        let block = stages.first { $0.start <= wakeUpMs && $0.end > wakeUpMs }
         XCTAssertEqual(block?.kind, .wake)
         // Blocks are contiguous and in order.
         for i in 1..<stages.count { XCTAssertGreaterThanOrEqual(stages[i].start, stages[i - 1].end) }
