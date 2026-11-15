@@ -78,6 +78,10 @@ enum CardioStager {
         let perEpoch = epochSec // 1 Hz
         let nEpoch = n / perEpoch
         guard nEpoch >= 3 else { return nil }
+        // Same coverage floor the decision layer applies, checked before the costly features.
+        var withHR = 0
+        for e in 0..<nEpoch where (e * perEpoch..<min(e * perEpoch + perEpoch, n)).contains(where: { input.hr[$0] > 0 }) { withHR += 1 }
+        guard Double(withHR) / Double(nEpoch) >= minHrCoverage else { return nil }
         let segStarts = input.runStarts.map { $0 / perEpoch }.filter { $0 > 0 && $0 < nEpoch }
         let seg = segments(segStarts, nEpoch)
 

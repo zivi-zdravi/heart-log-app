@@ -69,20 +69,20 @@ final class BandNightTests: XCTestCase {
 
     // MARK: Night
 
-    /// A synthetic night: awake 20 min, asleep 7 h with a 15-minute wake-up
+    /// A synthetic night: awake 20 min, asleep 4 h with a 15-minute wake-up
     /// (fast heart, moving) in the middle, awake 20 min. One record a second.
     private func night(start: Int64 = 1_800_000_000) -> [BandSecond] {
         var rng = SystemRandomNumberGenerator()
         var out: [BandSecond] = []
-        let total = (20 + 420 + 20) * 60
+        let total = (20 + 240 + 20) * 60
         for i in 0..<total {
             let min = i / 60
-            let awake = min < 20 || min >= 440 || (min >= 220 && min < 235)
+            let awake = min < 20 || min >= 260 || (min >= 130 && min < 145)
             let hr = awake ? 86 + Int.random(in: -3...3, using: &rng) : 56 + Int.random(in: -2...2, using: &rng)
             let base = 60000.0 / Double(hr)
             let rr = [Int(base + Double.random(in: -25...25, using: &rng))]
             let wobble: Float = awake ? Float.random(in: -0.3...0.3, using: &rng) : 0
-            let state = min < 15 ? 0 : (min < 20 ? 1 : (min >= 440 ? 3 : (awake ? 0 : 2)))
+            let state = min < 15 ? 0 : (min < 20 ? 1 : (min >= 260 ? 3 : (awake ? 0 : 2)))
             out.append(BandSecond(t: start + Int64(i), hr: hr, rr: rr, gravity: [0.1 + wobble, 0.2, 0.97 - wobble], steps: 0, activity: 0, sleepState: state))
         }
         return out
@@ -91,10 +91,10 @@ final class BandNightTests: XCTestCase {
     func testWindowFollowsTheBandsState() throws {
         let secs = night()
         let w = try XCTUnwrap(BandNight.window(secs))
-        // Starts at the 15-minute "still", runs through the mid-night wake (under 30 min), ends at minute 440.
+        // Starts at the 15-minute "still", runs through the mid-night wake (under 30 min), ends at minute 260.
         let base: Int64 = 1_800_000_000 - 1_800_000_000 % 60
         let wantStart: Int64 = base + 15 * 60
-        let wantEnd: Int64 = base + 440 * 60
+        let wantEnd: Int64 = base + 260 * 60
         XCTAssertEqual(w.start, wantStart)
         XCTAssertLessThanOrEqual(abs(w.end - wantEnd), 120)
     }
@@ -124,9 +124,9 @@ final class BandNightTests: XCTestCase {
         let stages = try XCTUnwrap(BandNight.stages(secs))
         let mins = Dictionary(grouping: stages, by: \.kind).mapValues { $0.reduce(0) { $0 + $1.minutes } }
         let asleep = (mins[.light] ?? 0) + (mins[.deep] ?? 0) + (mins[.rem] ?? 0)
-        XCTAssertGreaterThan(asleep, 330, "most of the 7 hours reads as sleep")
-        // The mid-night wake-up (minutes 220-235 from the start) shows as wake.
-        let wakeUpMs: Int64 = (1_800_000_000 + 227 * 60) * 1000
+        XCTAssertGreaterThan(asleep, 190, "most of the 4 hours reads as sleep")
+        // The mid-night wake-up (minutes 130-145 from the start) shows as wake.
+        let wakeUpMs: Int64 = (1_800_000_000 + 137 * 60) * 1000
         let block = stages.first { $0.start <= wakeUpMs && $0.end > wakeUpMs }
         XCTAssertEqual(block?.kind, .wake)
         // Blocks are contiguous and in order.
