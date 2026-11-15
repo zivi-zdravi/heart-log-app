@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject private var r = Recorder.shared
     @ObservedObject private var link = BandLink.shared
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var capture = BandCapture.shared
     @State private var weight = ""
     @State private var feet = ""
     @State private var inches = ""
@@ -31,8 +32,18 @@ struct SettingsView: View {
         return days.isEmpty ? "None" : "\(days.count) days, \(b) with breathing rate"
     }
 
+    /// Phase 1: what Zdravlje has heard of the band's history.
+    private var downloadSummary: String {
+        let nights = BandHistoryStore.shared.own.count
+        guard let last = capture.lastData else {
+            return nights == 0 ? "Listening, nothing yet" : "\(nights) night\(nights == 1 ? "" : "s") staged"
+        }
+        let when = Calendar.current.isDateInToday(last) ? last.formatted(date: .omitted, time: .shortened) : last.formatted(date: .abbreviated, time: .shortened)
+        return "Last data \(when), \(nights) night\(nights == 1 ? "" : "s") staged"
+    }
+
     private var bandSummary: String {
-        let days = BandHistoryStore.shared.days.values
+        let days = BandHistoryStore.shared.imported.values
         let st = days.filter { !($0.stages ?? []).isEmpty }.count
         return days.isEmpty ? "None" : "\(days.count) days, \(st) with sleep stages"
     }
@@ -155,6 +166,7 @@ struct SettingsView: View {
                 }
                 row("WHOOP history", whoopSummary)
                 row("Band days (OpenStrap import)", bandSummary)
+                row("Band download", downloadSummary)
                 row("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
             } header: {
                 Text("About")

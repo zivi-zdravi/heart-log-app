@@ -51,6 +51,8 @@ final class BandLink: ObservableObject {
     private var eventsUUID: CBUUID?
     private var reassembler: BandFrameReassembler?
     private var eventReassembler: BandFrameReassembler?
+    private var dataUUID: CBUUID?
+    private var dataReassembler: BandFrameReassembler?
     private var lastTapActed: Double?
     private var lastAlarmFired: Date?
     /// Our own sequence numbers start high to stay clear of other apps'
@@ -78,7 +80,11 @@ final class BandLink: ObservableObject {
         eventReassembler = BandFrameReassembler(generation: g)
         notifyUUID = CBUUID(string: g.commandNotifyUUID)
         eventsUUID = CBUUID(string: g.eventsUUID)
-        p.discoverCharacteristics([CBUUID(string: g.commandWriteUUID), CBUUID(string: g.commandNotifyUUID), CBUUID(string: g.eventsUUID)], for: s)
+        // History: listened to only (phase 1), never requested or answered.
+        dataUUID = CBUUID(string: g.dataUUID)
+        dataReassembler = BandFrameReassembler(generation: g)
+        p.discoverCharacteristics([CBUUID(string: g.commandWriteUUID), CBUUID(string: g.commandNotifyUUID), CBUUID(string: g.eventsUUID),
+                                   CBUUID(string: g.dataUUID)], for: s)
         return true
     }
 
@@ -89,7 +95,7 @@ final class BandLink: ObservableObject {
         for c in s.characteristics ?? [] {
             if c.uuid == CBUUID(string: g.commandWriteUUID) {
                 writeCharacteristic = c
-            } else if c.uuid == notifyUUID || c.uuid == eventsUUID {
+            } else if c.uuid == notifyUUID || c.uuid == eventsUUID || c.uuid == dataUUID {
                 p.setNotifyValue(true, for: c)
             }
         }
@@ -108,10 +114,21 @@ final class BandLink: ObservableObject {
     }
 
     /// Returns true if this characteristic belongs to the private channel.
-    func handles(_ c: CBCharacteristic) -> Bool { c.uuid == notifyUUID || c.uuid == eventsUUID }
+    func handles(_ c: CBCharacteristic) -> Bool { c.uuid == notifyUUID || c.uuid == eventsUUID || c.uuid == dataUUID }
 
     /// Call with every notification from the private channel's characteristics.
     func didReceive(_ data: Data, from c: CBCharacteristic) {
+        if c.uuid == dataUUID {
+            guard let r = dataReassembler else { return }
+            for frame in r.feed([UInt8](data)) where frame.decodable {
+                if let sec = BandSecond.decode(frame.inner) {
+                    BandCapture.shared.add(sec, offset: clockOffset ?? 0)
+                } else if let m = BandHistoryMarker(frame.inner) {
+                    BandCapture.shared.marker(m)
+                }
+            }
+            return
+        }
         let isEvents = c.uuid == eventsUUID
         guard let r = isEvents ? eventReassembler : reassembler else { return }
         for frame in r.feed([UInt8](data)) {
@@ -144,6 +161,8 @@ final class BandLink: ObservableObject {
         notifyUUID = nil
         reassembler = nil
         eventReassembler = nil
+        dataReassembler = nil
+        dataUUID = nil
         eventsUUID = nil
         pending.removeAll()
         alarmInFlight = false

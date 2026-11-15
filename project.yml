@@ -50,6 +50,9 @@ targets:
       - path: HeartLog/Water.swift
       - path: HeartLog/Notify.swift
       - path: HeartLog/Breathing.swift
+      - path: HeartLog/BandRecords.swift
+      - path: HeartLog/CardioStager.swift
+      - path: HeartLog/BandNight.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests

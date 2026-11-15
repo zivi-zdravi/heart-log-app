@@ -45,7 +45,17 @@ struct BandDay: Codable, Equatable {
 }
 
 struct BandHistoryData: Codable, Equatable {
+    /// From OpenStrap imports.
     var days: [String: BandDay] = [:]
+    /// Staged by Zdravlje itself from the band's own record. Wins over imports.
+    var own: [String: BandDay]?
+
+    /// What each day shows: Zdravlje's own stages first, imported values filling gaps.
+    var combined: [String: BandDay] {
+        var out = days
+        for (k, v) in own ?? [:] { out[k] = days[k].map { v.filling(from: $0) } ?? v }
+        return out
+    }
 }
 
 /// Reads an OpenStrap CSV export (daily, sleep). Only rows the band measured

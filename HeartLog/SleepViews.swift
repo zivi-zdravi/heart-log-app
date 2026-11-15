@@ -140,7 +140,8 @@ struct SleepView: View {
             return "This night comes from your WHOOP history, so it shows WHOOP's own numbers."
         }
         if stages != nil {
-            let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap, and its bedtime and wake time come from them." : ""
+            let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap, and its bedtime and wake time come from them."
+                : band?.source == "zdravlje" ? " Zdravlje worked out this night's stages itself from the band's own record, and its bedtime and wake time come from them." : ""
             let onPhone = phone.isEmpty ? "" : " Time you spent on your phone counts as awake."
             return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(onPhone)\(from)"
         }

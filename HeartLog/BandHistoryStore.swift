@@ -13,9 +13,28 @@ final class BandHistoryStore {
         data = (try? JSONDecoder().decode(BandHistoryData.self, from: Data(contentsOf: Self.url))) ?? BandHistoryData()
     }
 
-    var days: [String: BandDay] { lock.lock(); defer { lock.unlock() }; return data.days }
+    /// Every day, Zdravlje's own stages winning over imported ones.
+    var days: [String: BandDay] { lock.lock(); defer { lock.unlock() }; return data.combined }
+    /// Only what came from OpenStrap imports.
+    var imported: [String: BandDay] { lock.lock(); defer { lock.unlock() }; return data.days }
+    /// Only nights Zdravlje staged itself.
+    var own: [String: BandDay] { lock.lock(); defer { lock.unlock() }; return data.own ?? [:] }
 
-    func day(_ key: String) -> BandDay? { days[key] }
+    func setOwn(_ d: BandDay) {
+        lock.lock()
+        var o = data.own ?? [:]
+        guard o[d.day] != d else { lock.unlock(); return }
+        o[d.day] = d
+        data.own = o
+        JSONFile.write(data, to: Self.url)
+        lock.unlock()
+    }
+
+    func day(_ key: String) -> BandDay? {
+        lock.lock(); defer { lock.unlock() }
+        if let o = data.own?[key] { return data.days[key].map { o.filling(from: $0) } ?? o }
+        return data.days[key]
+    }
 
     func reload() {
         let fresh = (try? JSONDecoder().decode(BandHistoryData.self, from: Data(contentsOf: Self.url))) ?? BandHistoryData()
@@ -28,7 +47,11 @@ final class BandHistoryStore {
     @discardableResult
     func merge(_ incoming: BandHistoryData) -> Int {
         lock.lock()
-        let (merged, changed) = OpenStrapImport.merge(incoming, into: data)
+        var (merged, changed) = OpenStrapImport.merge(incoming, into: data)
+        // Keep this phone's own nights; a backup's own nights fill only gaps.
+        var own = data.own ?? [:]
+        for (k, v) in incoming.own ?? [:] where own[k] == nil { own[k] = v; changed += 1 }
+        merged.own = own.isEmpty ? nil : own
         data = merged
         JSONFile.write(merged, to: Self.url)
         lock.unlock()
