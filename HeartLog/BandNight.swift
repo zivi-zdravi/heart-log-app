@@ -114,6 +114,25 @@ enum BandNight {
         return out.isEmpty ? nil : out
     }
 
+    /// Steps in a span from the band's running step counter, which wraps at
+    /// 65,536 and doesn't reset at midnight. Each rise between neighbouring
+    /// records counts, as long as it's believable for the time between them
+    /// (at most 5 steps a second, and gaps under 3 hours); anything else, like
+    /// a counter reset, is skipped rather than guessed.
+    static func steps(_ secs: Seconds) -> Int {
+        var total = 0
+        var prev: BandSecond?
+        for s in secs {
+            defer { prev = s }
+            guard let p = prev else { continue }
+            let gap = s.t - p.t
+            guard gap > 0, gap <= 3 * 3600 else { continue }
+            let delta = (s.steps - p.steps + 65_536) % 65_536
+            if delta <= max(10, 5 * Int(gap)) { total += delta }
+        }
+        return total
+    }
+
     /// Ascending, one record per second (the later copy wins).
     static func tidy(_ secs: [BandSecond]) -> Seconds {
         var byT: [Int64: BandSecond] = [:]

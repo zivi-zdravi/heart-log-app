@@ -175,4 +175,25 @@ final class BandNightTests: XCTestCase {
         XCTAssertEqual(CardioStager.mad([1, 1, 2, 2, 4, 6, 9])!, 1.4826, accuracy: 1e-9)
         XCTAssertEqual(CardioStager.percentileSorted([10, 20, 30, 40], 25)!, 17.5, accuracy: 1e-9)
     }
+
+    // MARK: Steps
+
+    private func counter(_ pairs: [(Int64, Int)]) -> [BandSecond] {
+        pairs.map { BandSecond(t: $0.0, hr: 70, rr: [], gravity: nil, steps: $0.1, activity: 1, sleepState: 0) }
+    }
+
+    func testStepsCountRisesAcrossTheWrap() {
+        XCTAssertEqual(BandNight.steps(counter([(0, 65_530), (1, 65_532), (2, 65_534), (3, 0), (4, 3)])), 9)
+    }
+
+    func testStepsSkipResetsAndLongGaps() {
+        // A drop (counter reset) is skipped, not read as ~65k steps.
+        XCTAssertEqual(BandNight.steps(counter([(0, 500), (1, 502), (2, 10), (3, 12)])), 4)
+        // A rise too big for the time between records is skipped.
+        XCTAssertEqual(BandNight.steps(counter([(0, 0), (1, 400)])), 0)
+        // Across a 20-minute gap, a plausible rise still counts.
+        XCTAssertEqual(BandNight.steps(counter([(0, 0), (1200, 900)])), 900)
+        // Over 3 hours apart: skipped.
+        XCTAssertEqual(BandNight.steps(counter([(0, 0), (4 * 3600, 900)])), 0)
+    }
 }

@@ -158,6 +158,20 @@ final class BandCapture: ObservableObject {
         if changed { DayEngine.shared.invalidateAll() }
     }
 
+    /// Band-counted steps for a local calendar day, and how many minutes of records it had.
+    func steps(day: Date) -> (steps: Int, minutes: Int) {
+        let cal = Calendar.current
+        let start = Int64(cal.startOfDay(for: day).timeIntervalSince1970)
+        let end = start + 86_400
+        // The previous day's last record lets the first rise after midnight count.
+        let raw = load(day: dayKey(start - 43_200)).filter { $0.t >= start - 600 } + load(day: dayKey(start + 43_200))
+        let secs = BandNight.tidy(raw.filter { $0.t < end })
+        let inDay = secs.filter { $0.t >= start }
+        guard !inDay.isEmpty else { return (0, 0) }
+        let lead = secs.last { $0.t < start }
+        return (BandNight.steps((lead.map { [$0] } ?? []) + inDay), inDay.count / 60)
+    }
+
     /// Re-stage the last few nights from saved data (Settings button, and after an update).
     func restageRecent(days: Int = 14) {
         queue.async {

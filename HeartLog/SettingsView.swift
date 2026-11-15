@@ -167,6 +167,7 @@ struct SettingsView: View {
                 row("WHOOP history", whoopSummary)
                 row("Band days (OpenStrap import)", bandSummary)
                 row("Band download", downloadSummary)
+                BandStepsRow()
                 row("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
             } header: {
                 Text("About")
@@ -400,6 +401,36 @@ struct StepsHelp: View {
             .navigationTitle("Steps Shortcut")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+/// Band-counted steps for yesterday next to the phone's, while we check the
+/// band's counter before it replaces the Shortcut.
+private struct BandStepsRow: View {
+    @State private var text = "Checking"
+
+    var body: some View {
+        HStack {
+            Text("Band steps yesterday").foregroundColor(Theme.dim)
+            Spacer()
+            Text(text).multilineTextAlignment(.trailing)
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        let cal = Calendar.current
+        guard let day = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: Date())) else { return }
+        let band = await Task.detached { BandCapture.shared.steps(day: day) }.value
+        let phone = StepsProvider()
+        await phone.load(day: day)
+        let p = phone.steps.map { "phone \($0.formatted())" } ?? "no phone count"
+        if band.minutes == 0 {
+            text = "No band data yet (\(p))"
+        } else {
+            let partial = band.minutes < 20 * 60 ? ", \(band.minutes / 60) h of data" : ""
+            text = "\(band.steps.formatted()), \(p)\(partial)"
         }
     }
 }
