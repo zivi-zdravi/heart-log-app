@@ -32,6 +32,7 @@ struct NotifySettings: Codable, Equatable {
     var possibleActivity: NotifyRoute = .off
     var water: NotifyRoute = .band
     var waterEveryHours = 2
+    var breathingHigh: NotifyRoute = .phone
     var quietOn = true
     /// Minutes after midnight.
     var quietStart = 22 * 60
@@ -56,13 +57,14 @@ struct NotifySettings: Codable, Equatable {
         possibleActivity = try c.decodeIfPresent(NotifyRoute.self, forKey: .possibleActivity) ?? d.possibleActivity
         water = try c.decodeIfPresent(NotifyRoute.self, forKey: .water) ?? d.water
         waterEveryHours = try c.decodeIfPresent(Int.self, forKey: .waterEveryHours) ?? d.waterEveryHours
+        breathingHigh = try c.decodeIfPresent(NotifyRoute.self, forKey: .breathingHigh) ?? d.breathingHigh
         quietOn = try c.decodeIfPresent(Bool.self, forKey: .quietOn) ?? d.quietOn
         quietStart = try c.decodeIfPresent(Int.self, forKey: .quietStart) ?? d.quietStart
         quietEnd = try c.decodeIfPresent(Int.self, forKey: .quietEnd) ?? d.quietEnd
     }
 
     var anyPhone: Bool {
-        [lowBattery, charger, goneQuiet, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water].contains { $0.toPhone }
+        [lowBattery, charger, goneQuiet, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water, breathingHigh].contains { $0.toPhone }
     }
 }
 
@@ -75,6 +77,7 @@ struct NotifyState: Codable, Equatable {
     var windDownDay: String?
     var checkInDay: String?
     var notSavedDay: String?
+    var breathingDay: String?
     /// Start times (ms) of activity spans already announced.
     var announcedActivities: [Int64] = []
 }
@@ -111,6 +114,13 @@ enum NotifyRules {
         guard day.on else { return false }
         guard let next = schedule.next(after: now, calendar: calendar) else { return true }
         return !calendar.isDate(next, inSameDayAs: tomorrow)
+    }
+
+    /// Last night's breathing rate is clearly above the usual range (more than
+    /// half a breath a minute, or a quarter of the range's width, past its top).
+    static func breathingHigh(_ rate: Double, usual: StageMath.Range?) -> Bool {
+        guard let u = usual else { return false }
+        return StageMath.compare(rate, to: u, minMargin: 0.5) == 1
     }
 
     /// Wind-down time: target bedtime (usual wake minus tonight's need) less 45 minutes.

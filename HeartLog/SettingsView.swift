@@ -24,6 +24,19 @@ struct SettingsView: View {
     @State private var confirmStop = false
     @AppStorage("lastBackup") private var lastBackup = 0.0
 
+    /// Shows what the imports put on this phone.
+    private var whoopSummary: String {
+        let days = HistoryStore.shared.days.values
+        let b = days.filter { $0.respRate != nil }.count
+        return days.isEmpty ? "None" : "\(days.count) days, \(b) with breathing rate"
+    }
+
+    private var bandSummary: String {
+        let days = BandHistoryStore.shared.days.values
+        let st = days.filter { !($0.stages ?? []).isEmpty }.count
+        return days.isEmpty ? "None" : "\(days.count) days, \(st) with sleep stages"
+    }
+
     var body: some View {
         List {
             Section {
@@ -140,6 +153,8 @@ struct SettingsView: View {
                 if let offset = link.clockOffset {
                     row("Band clock", abs(offset) <= 2 ? "In sync with phone" : "\(offset > 0 ? "Ahead" : "Behind") by \(abs(offset)) s")
                 }
+                row("WHOOP history", whoopSummary)
+                row("Band days (OpenStrap import)", bandSummary)
                 row("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
             } header: {
                 Text("About")

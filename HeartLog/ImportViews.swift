@@ -265,8 +265,10 @@ struct OpenStrapImportView: View {
             DispatchQueue.main.async {
                 busy = false
                 done = true
-                let extra = breathing == 0 ? "" : " Added WHOOP's breathing rate to \(breathing) day\(breathing == 1 ? "" : "s") of your history."
-                status = changed == 0 && breathing == 0 ? "Everything in these files was already here." : "Imported \(changed) day\(changed == 1 ? "" : "s").\(extra)"
+                var parts: [String] = []
+                if breathing > 0 { parts.append("Added WHOOP's breathing rate to \(breathing) day\(breathing == 1 ? "" : "s") of your history.") }
+                if changed > 0 { parts.append("Added or filled in \(changed) band day\(changed == 1 ? "" : "s").") }
+                status = parts.isEmpty ? "Nothing new: everything in these files was already here. Settings, About shows what's on this phone." : parts.joined(separator: " ")
             }
         }
     }

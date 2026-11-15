@@ -78,6 +78,9 @@ struct NotificationsView: View {
                     value: store.settings.waterEveryHours == 1 ? "1 hour" : "\(store.settings.waterEveryHours) hours",
                     Stepper("", value: binding(\.waterEveryHours), in: 1...6))
             }
+            Section("Overnight") {
+                row("Breathing rate higher than usual", "In the morning, when last night was clearly above your usual range", \.breathingHigh)
+            }
             Section {
                 Toggle(isOn: binding(\.quietOn)) {
                     VStack(alignment: .leading, spacing: 2) {

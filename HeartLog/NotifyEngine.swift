@@ -56,6 +56,7 @@ final class NotifyEngine {
     private var windDownToday: (key: String, minute: Int)?
     private var alarmUnsavedSince: Date?
     private var busy = false
+    private var lastBreathingCheck = Date.distantPast
 
     private var settings: NotifySettings { NotifyStore.shared.settings }
     private var state: NotifyState { NotifyStore.shared.state }
@@ -216,6 +217,13 @@ final class NotifyEngine {
             }
         }
 
+        // Breathing rate higher than usual: once a day, after you're up.
+        if s.breathingHigh != .off, state.breathingDay != todayKey, !isQuiet(now), minute < 15 * 60,
+           now.timeIntervalSince(lastBreathingCheck) >= 30 * 60 {
+            lastBreathingCheck = now
+            checkBreathing(now, key: todayKey)
+        }
+
         // Step goal, every 15 minutes
         if s.stepGoal != .off, state.stepGoalDay != todayKey, now.timeIntervalSince(lastSteps) >= 15 * 60 {
             lastSteps = now
@@ -250,6 +258,33 @@ final class NotifyEngine {
                 guard let self else { return }
                 self.busy = false
                 if let minute { self.windDownToday = (DayEngine.shared.key(now), minute) }
+            }
+        }
+    }
+
+    private func checkBreathing(_ now: Date, key: String) {
+        let settingsNow = SettingsStore.shared.value
+        let route = settings.breathingHigh
+        Task.detached { [weak self] in
+            let cal = Calendar.current
+            let today = cal.startOfDay(for: now)
+            let r = DayEngine.shared.record(today, settings: settingsNow)
+            let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+            // Wait until the night is over and you've been up a little while.
+            guard let r, let p = r.sleep, p.wake < nowMs - 30 * 60_000 else { return }
+            let from = cal.date(byAdding: .day, value: -28, to: today) ?? today
+            let to = cal.date(byAdding: .day, value: -1, to: today) ?? today
+            let usual = StageMath.usualRange(DayEngine.shared.records(from: from, to: to, settings: settingsNow).compactMap(\.respRate))
+            await MainActor.run {
+                guard let self, NotifyStore.shared.state.breathingDay != key else { return }
+                guard let rate = r.respRate, let u = usual, NotifyRules.breathingHigh(rate, usual: u) else {
+                    NotifyStore.shared.changeState { $0.breathingDay = key }
+                    return
+                }
+                let body = String(format: "Last night: %.1f a minute, above your usual (%.1f to %.1f). A rise like this can come before getting sick. Alcohol, a late meal, a hard workout or a warm room can do it too.", rate, u.low, u.high)
+                if self.send(route, id: "breathing", title: "Breathing rate higher than usual", body: body) {
+                    NotifyStore.shared.changeState { $0.breathingDay = key }
+                }
             }
         }
     }

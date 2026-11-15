@@ -14,6 +14,7 @@ final class NotifyTests: XCTestCase {
         XCTAssertEqual(s.possibleActivity, .off)
         XCTAssertEqual(s.water, .band)
         XCTAssertEqual(s.waterEveryHours, 2)
+        XCTAssertEqual(s.breathingHigh, .phone)
         XCTAssertTrue(s.quietOn)
         XCTAssertEqual(s.quietStart, 22 * 60)
         XCTAssertEqual(s.quietEnd, 7 * 60)
@@ -105,5 +106,13 @@ final class NotifyTests: XCTestCase {
         XCTAssertTrue(NotifyRules.checkInDue(schedule: skipped, now: sun, calendar: cal))
         // Saturday: Sunday isn't an alarm day, so nothing.
         XCTAssertFalse(NotifyRules.checkInDue(schedule: skipped, now: date(2026, 11, 14, 19), calendar: cal))
+    }
+
+    func testBreathingHigh() {
+        let u = StageMath.Range(low: 15.2, high: 16.0)
+        XCTAssertFalse(NotifyRules.breathingHigh(16.4, usual: u), "within the margin")
+        XCTAssertTrue(NotifyRules.breathingHigh(16.6, usual: u))
+        XCTAssertFalse(NotifyRules.breathingHigh(14.0, usual: u), "lower isn't flagged")
+        XCTAssertFalse(NotifyRules.breathingHigh(20, usual: nil), "no usual yet")
     }
 }
