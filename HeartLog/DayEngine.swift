@@ -35,6 +35,20 @@ final class HistoryStore {
         return added
     }
 
+    /// Fills breathing rate into WHOOP days that lack it. Returns how many changed.
+    @discardableResult
+    func fillBreathing(_ rates: [String: Double]) -> Int {
+        lock.lock()
+        let (filled, n) = HistoryImport.fillBreathing(rates, into: data)
+        if n > 0 {
+            data = filled
+            JSONFile.write(filled, to: Self.url)
+        }
+        lock.unlock()
+        if n > 0 { DayEngine.shared.invalidateAll() }
+        return n
+    }
+
     /// Merges history.json from a backup.
     @discardableResult
     func merge(json: Data) -> Int {
@@ -80,7 +94,7 @@ enum Overrides {
 /// earlier days come from WHOOP history. Finished days are cached in days.json.
 final class DayEngine {
     static let shared = DayEngine()
-    static let version = 5
+    static let version = 6
 
     private struct Cache: Codable {
         var fingerprint = ""
@@ -203,6 +217,10 @@ final class DayEngine {
         } else {
             r.sleep = SleepMath.detect(night).map { PhoneUse.apply(PhoneUse.read(from: s0 - 6 * hour, to: s0 + 14 * hour), to: $0) }
         }
+        if r.respRate == nil, let b = BandHistoryStore.shared.day(k)?.respRate {
+            r.respRate = (b * 10).rounded() / 10
+            r.respSource = "band"
+        }
         let day = samples.filter { $0.t >= s0 }
         let bounds = settings.zoneBounds
         r.strain = Metrics.strain(zoneSeconds: Metrics.zoneSeconds(day, bounds))
@@ -213,6 +231,10 @@ final class DayEngine {
             let inside = samples.filter { $0.t >= p.onset && $0.t < p.wake }
             r.hrv = Metrics.hrv(inside)
             r.rhr = p.lowestHR
+            if let b = BreathingMath.night(inside) {
+                r.respRate = b.brpm
+                r.respSource = "app"
+            }
         } else {
             r.hrv = Metrics.hrv(samples.filter { $0.t >= s0 + 2 * hour && $0.t < s0 + 6 * hour })
             r.rhr = Metrics.restingHR(samples.filter { $0.t >= s0 && $0.t < s0 + 8 * hour })

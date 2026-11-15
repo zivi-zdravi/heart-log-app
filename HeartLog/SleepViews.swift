@@ -65,6 +65,7 @@ struct SleepView: View {
     @State private var band: BandDay?
     @State private var pastAsleep: [Double] = []
     @State private var pastDeep: [Double] = []
+    @State private var pastResp: [Double] = []
     @State private var usualWakeMin: Double?
     @ObservedObject private var settings = SettingsStore.shared
 
@@ -154,7 +155,7 @@ struct SleepView: View {
             s = await Task.detached { Store.shared.readSamples(from: p.onset - 15 * 60_000, to: p.wake + 15 * 60_000) }.value
         }
         let settingsNow = SettingsStore.shared.value
-        let past: (asleep: [Double], deep: [Double], wake: Double?, band: BandDay?) = await Task.detached {
+        let past: (asleep: [Double], deep: [Double], wake: Double?, band: BandDay?, resp: [Double]) = await Task.detached {
             let cal = Calendar.current
             let key = DayEngine.shared.key(d)
             let from = cal.date(byAdding: .day, value: -28, to: d) ?? d
@@ -169,7 +170,7 @@ struct SleepView: View {
             let bandDays = BandHistoryStore.shared.days
             let deep = (1...28).compactMap { cal.date(byAdding: .day, value: -$0, to: d) }
                 .compactMap { bandDays[DayEngine.shared.key($0)]?.stageMinutes[.deep] }
-            return (asleep, deep, SleepMath.median(wakes), bandDays[key])
+            return (asleep, deep, SleepMath.median(wakes), bandDays[key], records.compactMap(\.respRate))
         }.value
         let dayStart = Int64(Calendar.current.startOfDay(for: d).timeIntervalSince1970 * 1000)
         let phoneSpans = await Task.detached { PhoneUse.read(from: dayStart - 6 * 3_600_000, to: dayStart + 14 * 3_600_000) }.value
@@ -180,6 +181,7 @@ struct SleepView: View {
         phone = phoneSpans
         pastAsleep = past.asleep
         pastDeep = past.deep
+        pastResp = past.resp
         usualWakeMin = past.wake
         loaded = true
     }
@@ -327,6 +329,20 @@ struct SleepView: View {
                              return "Too close to your usual to call \(span)"
                          } ?? "Building your usual: \(pastDeep.count) of 3 nights")
             }
+            if let b = r.respRate {
+                let usualResp = StageMath.usualRange(pastResp)
+                let lo = min(b, usualResp?.low ?? b) - 3, hi = max(b, usualResp?.high ?? b) + 3
+                usualRow("Breathing rate", value: String(format: "%.1f a minute", b), marker: (b, b), usual: usualResp,
+                         note: usualResp.map { (u: StageMath.Range) -> String in
+                             let span = String(format: "(%.1f to %.1f)", u.low, u.high)
+                             switch StageMath.compare(b, to: u, minMargin: 0.5) {
+                             case 1: return String(format: "%.1f higher than usual %@", b - u.high, span)
+                             case -1: return String(format: "%.1f lower than usual %@", u.low - b, span)
+                             default: return "Within your usual \(span)"
+                             }
+                         } ?? "Building your usual: \(pastResp.count) of 5 nights",
+                         axis: lo...hi)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("Slept through your time in bed")
@@ -339,8 +355,10 @@ struct SleepView: View {
         }
     }
 
-    private func usualRow(_ label: String, value: String, marker: (Double, Double), usual: StageMath.Range?, note: String) -> some View {
-        let top = max(marker.1, usual?.high ?? 0) * 1.25
+    private func usualRow(_ label: String, value: String, marker: (Double, Double), usual: StageMath.Range?, note: String,
+                          axis: ClosedRange<Double>? = nil) -> some View {
+        let bottom = axis?.lowerBound ?? 0
+        let top = axis?.upperBound ?? max(marker.1, usual?.high ?? 0) * 1.25
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(label)
@@ -350,7 +368,7 @@ struct SleepView: View {
             .font(.system(size: 14)).foregroundColor(Theme.text)
             GeometryReader { g in
                 let w = g.size.width
-                let x: (Double) -> CGFloat = { v in top > 0 ? CGFloat(min(1, max(0, v / top))) * w : 0 }
+                let x: (Double) -> CGFloat = { v in top > bottom ? CGFloat(min(1, max(0, (v - bottom) / (top - bottom)))) * w : 0 }
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.track)
                     if let u = usual {

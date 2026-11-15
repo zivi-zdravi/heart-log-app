@@ -72,6 +72,7 @@ enum HistoryImport {
                 r.sleepNeedMin = num(row, "Sleep need (min)")
                 r.debtMin = num(row, "Sleep debt (min)")
                 r.consistency = num(row, "Sleep consistency %")
+                if let v = num(row, "Respiratory rate (rpm)") { r.respRate = v; r.respSource = "whoop" }
                 if let o = onset, let w = wake, w > o {
                     let span = w.timeIntervalSince(o) / 60
                     r.sleep = SleepPeriod(onset: ms(o), wake: ms(w), asleepMin: num(row, "Asleep duration (min)") ?? span,
@@ -97,10 +98,33 @@ enum HistoryImport {
     }
 
     /// Adds days and workouts not already present. Existing ones are kept.
+    /// Breathing rate from OpenStrap's copy of WHOOP history, for WHOOP days that lack it.
+    static func fillBreathing(_ rates: [String: Double], into current: HistoryData) -> (HistoryData, filled: Int) {
+        var result = current
+        var filled = 0
+        for (k, v) in rates {
+            guard var d = result.days[k], d.respRate == nil else { continue }
+            d.respRate = (v * 10).rounded() / 10
+            d.respSource = "whoop"
+            result.days[k] = d
+            filled += 1
+        }
+        return (result, filled)
+    }
+
     static func merge(_ incoming: HistoryData, into current: HistoryData) -> (HistoryData, added: Int) {
         var result = current
         var added = 0
-        for (k, v) in incoming.days where result.days[k] == nil {
+        for (k, v) in incoming.days {
+            if var old = result.days[k] {
+                // Fills breathing rate into days imported before it was read.
+                if old.respRate == nil, let b = v.respRate {
+                    old.respRate = b
+                    old.respSource = v.respSource
+                    result.days[k] = old
+                }
+                continue
+            }
             result.days[k] = v
             added += 1
         }

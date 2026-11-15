@@ -186,10 +186,10 @@ struct OpenStrapImportView: View {
                 if let f = found, !done {
                     summary(f)
                     Card {
-                        Text("Imported: what your band measured itself, meaning band-counted steps, breathing rate and sleep stages. Skipped: OpenStrap's copy of your WHOOP history, which Zdravlje already has, and OpenStrap's own scores, since Zdravlje calculates its own. Importing again later only fills gaps.")
+                        Text("Imported: what your band measured itself, meaning band-counted steps, breathing rate and sleep stages. From OpenStrap's copy of your WHOOP history, only WHOOP's breathing rate is taken, for days that don't have it. Skipped: the rest of that copy, which Zdravlje already has, and OpenStrap's own scores, since Zdravlje calculates its own. Importing again later only fills gaps.")
                             .font(.system(size: 14)).foregroundColor(Theme.dim)
                     }
-                    Button("Import \(f.data.days.count) days") { save(f) }.buttonStyle(TintButton(color: Theme.green)).disabled(busy)
+                    Button(f.data.days.isEmpty ? "Import breathing rate" : "Import \(f.data.days.count) days") { save(f) }.buttonStyle(TintButton(color: Theme.green)).disabled(busy)
                 }
             }
             .padding(20)
@@ -209,6 +209,7 @@ struct OpenStrapImportView: View {
             if let a = keys.first, let b = keys.last { line("Dates", "\(pretty(a)) to \(pretty(b))") }
             line("Nights with sleep stages", "\(nights)")
             line("Days with band steps", "\(steps)")
+            if !f.whoopBreathing.isEmpty { line("WHOOP days with breathing rate", "\(f.whoopBreathing.count)") }
             if f.skippedWhoopRows > 0 { line("WHOOP rows skipped", "\(f.skippedWhoopRows)") }
         }
     }
@@ -246,7 +247,7 @@ struct OpenStrapImportView: View {
                 busy = false
                 if !parsed.foundDaily && !parsed.foundSleep {
                     status = "Those don't look like OpenStrap exports. The file names should start with openstrap_daily and openstrap_sleep."
-                } else if parsed.data.days.isEmpty {
+                } else if parsed.data.days.isEmpty && parsed.whoopBreathing.isEmpty {
                     status = "No band-measured days in those files, only WHOOP history, which Zdravlje already has."
                 } else {
                     status = parsed.foundSleep ? "" : "Sleep stages file not chosen. You can import it later; it only fills gaps."
@@ -260,10 +261,12 @@ struct OpenStrapImportView: View {
         busy = true
         DispatchQueue.global(qos: .userInitiated).async {
             let changed = BandHistoryStore.shared.merge(f.data)
+            let breathing = HistoryStore.shared.fillBreathing(f.whoopBreathing)
             DispatchQueue.main.async {
                 busy = false
                 done = true
-                status = changed == 0 ? "Everything in these files was already here." : "Imported \(changed) day\(changed == 1 ? "" : "s"). Sleep stages will show on the new Sleep screen."
+                let extra = breathing == 0 ? "" : " Added WHOOP's breathing rate to \(breathing) day\(breathing == 1 ? "" : "s") of your history."
+                status = changed == 0 && breathing == 0 ? "Everything in these files was already here." : "Imported \(changed) day\(changed == 1 ? "" : "s").\(extra)"
             }
         }
     }

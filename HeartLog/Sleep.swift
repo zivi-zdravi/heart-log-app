@@ -29,6 +29,10 @@ struct DayRecord: Codable, Equatable {
     var usualHRV: Double?
     var usualRHR: Double?
     var usualSleep: Double?
+    /// Breaths a minute while asleep, and where it came from: "app" (Zdravlje,
+    /// from beat timing), "band" (OpenStrap import) or "whoop" (WHOOP history).
+    var respRate: Double?
+    var respSource: String?
 
     var isWhoop: Bool { source == "whoop" }
 }

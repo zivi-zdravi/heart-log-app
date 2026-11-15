@@ -55,6 +55,8 @@ enum OpenStrapImport {
     struct Result: Equatable {
         var data = BandHistoryData()
         var skippedWhoopRows = 0
+        /// Breathing rate from OpenStrap's copy of WHOOP history, by day.
+        var whoopBreathing: [String: Double] = [:]
         var foundDaily = false
         var foundSleep = false
     }
@@ -73,6 +75,7 @@ enum OpenStrapImport {
             for row in CSV.table(daily) {
                 guard let day = row["date"], day.count == 10 else { continue }
                 guard row["source"] == "band" else {
+                    if row["source"] == "whoop_export", let r = num(row, "resp_rate") { out.whoopBreathing[day] = r }
                     out.skippedWhoopRows += 1
                     continue
                 }
@@ -227,8 +230,9 @@ enum StageMath {
 
     /// Whether a value is clearly outside the usual range: beyond it by more
     /// than a quarter of the range's width (and at least 10 minutes).
-    static func compare(_ value: Double, to usual: Range) -> Int {
-        let margin = max(10, (usual.high - usual.low) / 4)
+    /// `minMargin` is in the value's own units (minutes by default).
+    static func compare(_ value: Double, to usual: Range, minMargin: Double = 10) -> Int {
+        let margin = max(minMargin, (usual.high - usual.low) / 4)
         if value > usual.high + margin { return 1 }
         if value < usual.low - margin { return -1 }
         return 0

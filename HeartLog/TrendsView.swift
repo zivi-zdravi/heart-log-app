@@ -75,6 +75,8 @@ struct TrendsView: View {
                               usual: records.last?.usualHRV) { $0.hrv }
                         chart(TrendMetric(title: "Resting heart rate", color: Theme.orange, minSpan: 10, lowerIsBetter: true, weekStyle: .line, night: true),
                               usual: records.last?.usualRHR) { $0.rhr.map { Double($0) } }
+                        chart(TrendMetric(title: "Breathing rate", color: Theme.blue, unit: "/min", decimals: 1, minSpan: 3, weekStyle: .line, night: true),
+                              usual: SleepMath.median(records.suffix(30).compactMap(\.respRate))) { $0.respRate }
                         chart(TrendMetric(title: "Sleep score", color: Theme.blue, colorize: true, fixed: 0...100, night: true)) { $0.sleepScore }
                         CaloriesTrend(range: range, start: start, today: today, burned: values { $0.calories }, eaten: eatenValues, goal: goal)
                         chart(TrendMetric(title: "Hours slept", color: Theme.blue, unit: " h", decimals: 1, minSpan: 3, night: true)) { $0.sleep.map { $0.asleepMin / 60 } }
