@@ -48,6 +48,7 @@ targets:
       - path: HeartLog/BandHistory.swift
       - path: HeartLog/AlarmSchedule.swift
       - path: HeartLog/Water.swift
+      - path: HeartLog/Notify.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests

@@ -158,9 +158,11 @@ final class BandLink: ObservableObject {
     /// Call often (Recorder calls it with each heart rate reading). Checks the
     /// alarm about once a minute: after one fires, the next one goes on.
     func tick() {
+        NotifyEngine.shared.bandHeard()
         guard Date().timeIntervalSince(lastTick) >= 60 else { return }
         lastTick = Date()
         planAlarm(force: false)
+        NotifyEngine.shared.tick()
     }
 
     // MARK: Handshake
@@ -224,21 +226,28 @@ final class BandLink: ObservableObject {
         case BandEventID.alarmFired:
             lastAlarmFired = Date()
             log?("alarm_fired", "")
+        case BandEventID.chargingOn, BandEventID.chargingOff:
+            // Only events happening now, not ones replayed from the band's memory.
+            let age = Date().timeIntervalSince1970 - (Double(ts) - Double(clockOffset ?? 0))
+            log?("charger", id == UInt16(BandEventID.chargingOn) ? "on" : "off")
+            if abs(age) < 60 { NotifyEngine.shared.charger(on: id == UInt16(BandEventID.chargingOn)) }
         default:
             break
         }
     }
 
-    /// Asks the band to send its events (double-tap among them) when a tap
-    /// action is chosen.
+    /// Asks the band to send its events (double-tap, charger) when a tap
+    /// action or the charger notification is on.
     private func enableEventsIfNeeded() {
-        guard ready, let g = generation, WaterStore.shared.tapAction != .nothing else { return }
+        let wanted = WaterStore.shared.tapAction != .nothing || NotifyStore.shared.settings.charger != .off
+        guard ready, let g = generation, wanted else { return }
         send(BandOpcode.sendEventPackets, BandCommand.sendEventPackets(sequence: sequence, enabled: true, generation: g)) { [weak self] reply in
             self?.log?("events_on", "status \(reply.status)")
         }
     }
 
     func tapActionChanged() { enableEventsIfNeeded() }
+    func eventsNeedChanged() { enableEventsIfNeeded() }
 
     // MARK: Alarm
 
@@ -333,6 +342,16 @@ final class BandLink: ObservableObject {
             }
         }
         timeout(BandOpcode.disableAlarm)
+    }
+
+    /// A short pulse for a notification routed to the band.
+    func buzz(_ reason: String) {
+        guard ready, let g = generation else { return }
+        let b = BandAlarm.testBuzz(g)
+        let frame = (try? BandCommand.build(sequence: sequence, opcode: b.opcode, payload: b.body, generation: g)) ?? []
+        send(b.opcode, frame) { [weak self] reply in
+            self?.log?("buzz", "\(reason) status \(reply.status)")
+        }
     }
 
     /// A short buzz on the wrist, to check the band hears Zdravlje.

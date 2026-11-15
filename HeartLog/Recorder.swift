@@ -122,6 +122,7 @@ final class Recorder: NSObject, ObservableObject {
         band = nil
         batteryCharacteristic = nil
         BandLink.shared.reset()
+        NotifyEngine.shared.recordingStopped()
         bpm = 0
         status = "Not connected"
     }

@@ -479,6 +479,8 @@ enum BandEventID {
     /// with old timestamps) and debounce ~2 s (one physical tap can emit more
     /// than one event). Skip the recency check when the band timestamp is
     /// implausible (unset clock), and never act from a background drain.
+    static let chargingOn: UInt8 = 7
+    static let chargingOff: UInt8 = 8
     static let doubleTap: UInt8 = 14
     static let alarmSet: UInt8 = 56
     static let alarmFired: UInt8 = 57
