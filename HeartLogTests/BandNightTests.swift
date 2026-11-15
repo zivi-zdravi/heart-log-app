@@ -194,6 +194,6 @@ final class BandNightTests: XCTestCase {
         // Across a 20-minute gap, a plausible rise still counts.
         XCTAssertEqual(BandNight.steps(counter([(0, 0), (1200, 900)])), 900)
         // Over 3 hours apart: skipped.
-        XCTAssertEqual(BandNight.steps(counter([(0, 0), (4 * 3600, 900)])), 0)
+        XCTAssertEqual(BandNight.steps(counter([(0, 0), (Int64(4 * 3600), 900)])), 0)
     }
 }
