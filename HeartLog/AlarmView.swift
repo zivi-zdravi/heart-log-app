@@ -161,9 +161,6 @@ struct AlarmView: View {
         return "\(AlarmSchedule.weekdayNames[i]) \(AlarmSchedule.label(minutes: (c.hour ?? 0) * 60 + (c.minute ?? 0)))"
     }
 
-    static func relative(_ d: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .full
-        return f.localizedString(for: d, relativeTo: Date())
-    }
+    /// Calendar days, not elapsed hours: Saturday evening to Monday is "in 2 days".
+    static func relative(_ d: Date) -> String { AlarmSchedule.relative(d, from: Date()) }
 }

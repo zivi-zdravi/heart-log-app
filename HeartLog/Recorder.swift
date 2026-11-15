@@ -257,7 +257,7 @@ extension Recorder: CBPeripheralDelegate {
     func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic, error: Error?) {
         guard let data = c.value else { return }
         if BandLink.shared.handles(c) {
-            BandLink.shared.didReceive(data)
+            BandLink.shared.didReceive(data, from: c)
         } else if c.uuid == hrChar {
             handleHR(data)
             BandLink.shared.tick()

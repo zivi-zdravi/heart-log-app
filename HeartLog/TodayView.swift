@@ -66,6 +66,7 @@ struct TodayView: View {
                     scores
                     ForEach(summary.suggestions, id: \.self) { suggestion($0) }
                     tiles
+                    AlarmTile()
                     dayActivities
                     if record?.isWhoop == true && !summary.hasData {
                         Text("From your WHOOP history.").font(.system(size: 13)).foregroundColor(Theme.dim)

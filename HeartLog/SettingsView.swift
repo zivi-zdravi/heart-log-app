@@ -109,8 +109,11 @@ struct SettingsView: View {
                 Text("Stays on this phone. Calories are estimates from heart rate.")
             }
 
+            Section("The band") {
+                NavigationLink("Double-tap") { DoubleTapView() }
+            }
             Section("Meals") {
-                NavigationLink("Goal, avoid list and food database") { MealsSettingsView() }
+                NavigationLink("Goal, water, avoid list and food database") { MealsSettingsView() }
             }
             Section("Steps") {
                 row("Last update from Shortcut", StepsLog.lastUpdate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "None yet")
@@ -265,6 +268,7 @@ struct SettingsView: View {
                     HistoryStore.shared.reload()
                 }
                 AlarmStore.shared.reload()
+                WaterStore.shared.reload()
                 if result.deferred.contains(BandHistoryStore.fileName), let b = try BackupArchive.extract(url, name: BandHistoryStore.fileName) {
                     BandHistoryStore.shared.merge(json: b)
                 } else {

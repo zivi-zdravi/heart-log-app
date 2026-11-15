@@ -48,7 +48,11 @@ final class BandLink: ObservableObject {
     private weak var peripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
     private var notifyUUID: CBUUID?
+    private var eventsUUID: CBUUID?
     private var reassembler: BandFrameReassembler?
+    private var eventReassembler: BandFrameReassembler?
+    private var lastTapActed: Double?
+    private var lastAlarmFired: Date?
     /// Our own sequence numbers start high to stay clear of other apps'
     /// traffic, which iOS also delivers to us on a shared connection.
     private var sequence: UInt8 = 0xA0
@@ -71,8 +75,10 @@ final class BandLink: ObservableObject {
         peripheral = p
         state = .opening
         reassembler = BandFrameReassembler(generation: g)
+        eventReassembler = BandFrameReassembler(generation: g)
         notifyUUID = CBUUID(string: g.commandNotifyUUID)
-        p.discoverCharacteristics([CBUUID(string: g.commandWriteUUID), CBUUID(string: g.commandNotifyUUID)], for: s)
+        eventsUUID = CBUUID(string: g.eventsUUID)
+        p.discoverCharacteristics([CBUUID(string: g.commandWriteUUID), CBUUID(string: g.commandNotifyUUID), CBUUID(string: g.eventsUUID)], for: s)
         return true
     }
 
@@ -83,7 +89,7 @@ final class BandLink: ObservableObject {
         for c in s.characteristics ?? [] {
             if c.uuid == CBUUID(string: g.commandWriteUUID) {
                 writeCharacteristic = c
-            } else if c.uuid == notifyUUID {
+            } else if c.uuid == notifyUUID || c.uuid == eventsUUID {
                 p.setNotifyValue(true, for: c)
             }
         }
@@ -102,14 +108,19 @@ final class BandLink: ObservableObject {
     }
 
     /// Returns true if this characteristic belongs to the private channel.
-    func handles(_ c: CBCharacteristic) -> Bool { c.uuid == notifyUUID }
+    func handles(_ c: CBCharacteristic) -> Bool { c.uuid == notifyUUID || c.uuid == eventsUUID }
 
-    /// Call with every notification from the command-reply characteristic.
-    func didReceive(_ data: Data) {
-        guard let reassembler else { return }
-        for frame in reassembler.feed([UInt8](data)) {
+    /// Call with every notification from the private channel's characteristics.
+    func didReceive(_ data: Data, from c: CBCharacteristic) {
+        let isEvents = c.uuid == eventsUUID
+        guard let r = isEvents ? eventReassembler : reassembler else { return }
+        for frame in r.feed([UInt8](data)) {
             guard frame.valid else {
                 log?("band_link", "bad frame")
+                continue
+            }
+            if frame.packetType == BandPacketType.event {
+                handleEvent(frame)
                 continue
             }
             guard let reply = BandCommandReply(frame), let handler = pending.removeValue(forKey: reply.opcode) else {
@@ -119,6 +130,7 @@ final class BandLink: ObservableObject {
             if state != .answering {
                 state = .answering
                 planAlarm(force: true)
+                enableEventsIfNeeded()
             }
             handler(reply)
         }
@@ -131,6 +143,8 @@ final class BandLink: ObservableObject {
         writeCharacteristic = nil
         notifyUUID = nil
         reassembler = nil
+        eventReassembler = nil
+        eventsUUID = nil
         pending.removeAll()
         alarmInFlight = false
         if state != .notFound { state = .opening }
@@ -186,6 +200,45 @@ final class BandLink: ObservableObject {
             }
         }
     }
+
+    // MARK: Events and double-tap
+
+    private func handleEvent(_ frame: BandFrame) {
+        let inner = frame.inner
+        guard inner.count >= 8 else { return }
+        let id = UInt16(inner[2]) | (UInt16(inner[3]) << 8)
+        let ts = UInt32(inner[4]) | (UInt32(inner[5]) << 8) | (UInt32(inner[6]) << 16) | (UInt32(inner[7]) << 24)
+        guard id < 256 else { return }
+        switch UInt8(id) {
+        case BandEventID.doubleTap:
+            let now = Date().timeIntervalSince1970
+            let alarm = AlarmStore.shared.armed?.wake ?? AlarmStore.shared.next
+            guard TapGuard.shouldAct(tapBandSec: ts, now: now, clockOffset: clockOffset,
+                                     lastActed: lastTapActed, alarm: alarm, alarmFired: lastAlarmFired) else {
+                log?("tap_ignored", "")
+                return
+            }
+            lastTapActed = now
+            log?("tap", WaterStore.shared.tapAction.rawValue)
+            WaterStore.shared.performTap()
+        case BandEventID.alarmFired:
+            lastAlarmFired = Date()
+            log?("alarm_fired", "")
+        default:
+            break
+        }
+    }
+
+    /// Asks the band to send its events (double-tap among them) when a tap
+    /// action is chosen.
+    private func enableEventsIfNeeded() {
+        guard ready, let g = generation, WaterStore.shared.tapAction != .nothing else { return }
+        send(BandOpcode.sendEventPackets, BandCommand.sendEventPackets(sequence: sequence, enabled: true, generation: g)) { [weak self] reply in
+            self?.log?("events_on", "status \(reply.status)")
+        }
+    }
+
+    func tapActionChanged() { enableEventsIfNeeded() }
 
     // MARK: Alarm
 

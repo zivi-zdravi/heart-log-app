@@ -68,6 +68,7 @@ struct MealsView: View {
                             .accessibilityLabel("Photo logging comes with the AI update")
                     }
                     meals
+                    WaterCard(key: key)
                     Text("Tap a meal to see or change its foods.").font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
@@ -903,6 +904,8 @@ struct MealsSettingsView: View {
             } footer: {
                 Text("Automatic: your usual burn over the last 4 weeks, adjusted for your aim. Turn it off to set your own number.")
             }
+
+            WaterSection()
 
             Section {
                 ForEach(store.settings.avoid, id: \.self) { a in Text(a) }

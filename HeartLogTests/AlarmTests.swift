@@ -87,3 +87,16 @@ final class AlarmTests: XCTestCase {
         XCTAssertNoThrow(try BandCommand.build(sequence: 1, opcode: BandOpcode.setClock, payload: BandAlarm.setClockBody(Date()), generation: g))
     }
 }
+
+final class RelativeWordingTests: XCTestCase {
+    func testCountsCalendarDays() {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let sat = c.date(from: DateComponents(year: 2026, month: 11, day: 14, hour: 17, minute: 54))!
+        let mon = c.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 7))!
+        let sun = c.date(from: DateComponents(year: 2026, month: 11, day: 15, hour: 7))!
+        XCTAssertEqual(AlarmSchedule.relative(mon, from: sat, calendar: c), "in 2 days")
+        XCTAssertEqual(AlarmSchedule.relative(sun, from: sat, calendar: c), "tomorrow")
+        XCTAssertEqual(AlarmSchedule.relative(sat.addingTimeInterval(3600), from: sat, calendar: c), "today")
+    }
+}

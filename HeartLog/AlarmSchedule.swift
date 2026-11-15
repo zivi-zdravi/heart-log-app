@@ -44,6 +44,16 @@ struct AlarmSchedule: Codable, Equatable {
         return nil
     }
 
+    /// Calendar days, not elapsed hours: Saturday evening to Monday is "in 2 days".
+    static func relative(_ d: Date, from now: Date, calendar: Calendar = .current) -> String {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: d)).day ?? 0
+        switch days {
+        case ..<1: return "today"
+        case 1: return "tomorrow"
+        default: return "in \(days) days"
+        }
+    }
+
     /// "7:00" style label for a day's time.
     static func label(minutes: Int) -> String {
         String(format: "%d:%02d", minutes / 60, minutes % 60)
