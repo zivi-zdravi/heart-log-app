@@ -1,0 +1,19 @@
+# Zdravlje AI server. Only listens on the server itself (127.0.0.1);
+# Tailscale Serve is what lets the family's phones reach it.
+services:
+  zdravlje-ai:
+    build: .
+    container_name: zdravlje-ai
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m

@@ -136,6 +136,7 @@ struct SettingsView: View {
             Section("The band") {
                 NavigationLink("Double-tap") { DoubleTapView() }
                 NavigationLink("Notifications") { NotificationsView() }
+                NavigationLink("AI") { AISettingsView() }
             }
             Section("Meals") {
                 NavigationLink("Goal, water, avoid list and food database") { MealsSettingsView() }
@@ -299,6 +300,7 @@ struct SettingsView: View {
                 AlarmStore.shared.reload()
                 WaterStore.shared.reload()
                 NotifyStore.shared.reload()
+                AIStore.shared.reload()
                 if result.deferred.contains(BandHistoryStore.fileName), let b = try BackupArchive.extract(url, name: BandHistoryStore.fileName) {
                     BandHistoryStore.shared.merge(json: b)
                 } else {

@@ -36,6 +36,8 @@ struct TrendsView: View {
     @State private var eaten: [String: Double] = [:]
     @State private var goal: Int?
     @State private var loading = true
+    @State private var asking = false
+    @ObservedObject private var ai = AIStore.shared
 
     private var cal: Calendar { Calendar.current }
     private var today: Date { cal.startOfDay(for: Date()) }
@@ -59,9 +61,20 @@ struct TrendsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(rangeText).font(.system(size: 13)).foregroundColor(Theme.dim)
-                        Text("Trends").font(Theme.display(30)).foregroundColor(Theme.text)
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(rangeText).font(.system(size: 13)).foregroundColor(Theme.dim)
+                            Text("Trends").font(Theme.display(30)).foregroundColor(Theme.text)
+                        }
+                        Spacer()
+                        if ai.isSetUp && ai.settings.ask {
+                            Button { asking = true } label: {
+                                Label("Ask", systemImage: "sparkle").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.blue)
+                                    .padding(.horizontal, 14).frame(minHeight: 40)
+                                    .background(Color(hex: 0x26394A)).clipShape(Capsule())
+                            }
+                            .accessibilityLabel("Ask about your data")
+                        }
                     }
                     Picker("Range", selection: $range) {
                         ForEach(TrendRange.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -93,6 +106,7 @@ struct TrendsView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .task(id: range) { await reload() }
+        .sheet(isPresented: $asking) { AskView(range: range) }
     }
 
     private func reload() async {

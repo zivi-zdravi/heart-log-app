@@ -24,7 +24,7 @@ struct Serving: Codable, Equatable, Hashable {
 }
 
 struct FoodItem: Codable, Equatable, Identifiable {
-    enum Source: String, Codable { case usda, openFoodFacts, custom }
+    enum Source: String, Codable { case usda, openFoodFacts, custom, ai }
 
     var id: String
     var name: String
@@ -41,6 +41,7 @@ struct FoodItem: Codable, Equatable, Identifiable {
         case .usda: return "USDA, everyday food"
         case .openFoodFacts: return "Packaged food (Open Food Facts)"
         case .custom: return "Entered by you"
+        case .ai: return "Estimated by AI"
         }
     }
 

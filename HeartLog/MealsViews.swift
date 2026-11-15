@@ -26,6 +26,8 @@ struct MealsView: View {
     @State private var editingGoal = false
     @State private var search: SearchRequest?
     @State private var scanning = false
+    @State private var photographing = false
+    @ObservedObject private var ai = AIStore.shared
 
     struct SearchRequest: Identifiable {
         let id = UUID()
@@ -62,10 +64,14 @@ struct MealsView: View {
                     HStack(spacing: 10) {
                         Button("Favorites") { search = SearchRequest(slot: defaultSlot, favorites: true) }.buttonStyle(TintButton(color: Theme.text))
                         Button("Barcode") { scanning = true }.buttonStyle(TintButton(color: Theme.text))
-                        Text("Photo (with AI)").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.dim)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-                            .accessibilityLabel("Photo logging comes with the AI update")
+                        if ai.isSetUp && ai.settings.photos {
+                            Button("Photo") { photographing = true }.buttonStyle(TintButton(color: Theme.text))
+                        } else {
+                            Text("Photo (with AI)").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.dim)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                                .accessibilityLabel("Photo logging needs AI. Set it up in Settings, AI.")
+                        }
                     }
                     meals
                     WaterCard(key: key)
@@ -86,6 +92,7 @@ struct MealsView: View {
         .sheet(isPresented: $editingGoal, onDismiss: { Task { await reload() } }) { GoalView(firstTime: false) }
         .sheet(item: $search) { r in FoodSearchView(day: day, slot: r.slot, favoritesOnly: r.favorites) }
         .sheet(isPresented: $scanning) { BarcodeView(day: day, slot: defaultSlot) }
+        .fullScreenCover(isPresented: $photographing) { AIPhotoFlow(day: day, slot: defaultSlot) }
     }
 
     private func reload() async {
@@ -346,6 +353,9 @@ struct FoodSearchView: View {
                         .padding(.horizontal, 14).frame(minHeight: 50)
                         .background(Theme.card).clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(focused ? Theme.green : Theme.line, lineWidth: 1))
+                    if AIStore.shared.isSetUp && !favoritesOnly && (AIStore.shared.settings.describe || AIStore.shared.settings.photos) {
+                        AIDescribeCard(day: day, slot: slot) { dismiss() }
+                    }
                     HStack(spacing: 8) {
                         chip("All", 0)
                         chip("Recent", 1)
@@ -379,7 +389,7 @@ struct FoodSearchView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            if favoritesOnly { filter = 2 } else { focused = true }
+            if favoritesOnly { filter = 2 } else if !AIStore.shared.isSetUp { focused = true }
         }
         .task(id: query) {
             guard filter == 0, query.trimmingCharacters(in: .whitespaces).count >= 3 else { return }
