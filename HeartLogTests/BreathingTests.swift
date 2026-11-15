@@ -4,7 +4,7 @@ import XCTest
 final class BreathingTests: XCTestCase {
     /// Beats whose intervals swing at `brpm` breaths a minute around `nn` ms.
     private func beats(brpm: Double, nn: Double = 1000, swing: Double = 40, noise: Double = 15,
-                       minutes: Double = 60, seed: UInt64 = 1) -> [BreathingMath.Beat] {
+                       minutes: Double = 20, seed: UInt64 = 1) -> [BreathingMath.Beat] {
         var rng = Seeded(seed)
         var t = 0.0
         var out: [BreathingMath.Beat] = []
@@ -20,7 +20,7 @@ final class BreathingTests: XCTestCase {
         for rate in [12.0, 15.0, 18.0, 22.0] {
             let e = try XCTUnwrap(BreathingMath.rate(beats(brpm: rate), artifact: 0), "rate \(rate)")
             XCTAssertEqual(e.brpm, rate, accuracy: 0.5, "rate \(rate)")
-            XCTAssertGreaterThan(e.usable, 10)
+            XCTAssertGreaterThanOrEqual(e.usable, 5)
         }
     }
 

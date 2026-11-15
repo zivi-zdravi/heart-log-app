@@ -90,27 +90,23 @@ enum BreathingMath {
         }
         var power = [Double](repeating: 0, count: count)
         for k in 0..<count {
-            var s2 = 0.0, c2 = 0.0
+            // One pass for the plain sums; the tau rotation (which makes the sine
+            // and cosine terms orthogonal) is then applied to the sums directly.
+            var yc0 = 0.0, ys0 = 0.0, cc0 = 0.0, ss0 = 0.0, cs0 = 0.0
             for i in 0..<n {
-                s2 += 2 * s[i] * c[i]
-                c2 += c[i] * c[i] - s[i] * s[i]
+                let ci = c[i], si = s[i], y = yc[i]
+                yc0 += y * ci; ys0 += y * si
+                cc0 += ci * ci; ss0 += si * si; cs0 += ci * si
+                c[i] = ci * dc[i] - si * ds[i]
+                s[i] = si * dc[i] + ci * ds[i]
             }
-            // tau rotates every point so the sine and cosine terms are orthogonal.
-            let half = atan2(s2, c2) / 2
+            let half = atan2(2 * cs0, cc0 - ss0) / 2
             let ct = cos(half), st = sin(half)
-            var yc1 = 0.0, ys1 = 0.0, cc = 0.0, ss = 0.0
-            for i in 0..<n {
-                let cr = c[i] * ct + s[i] * st
-                let sr = s[i] * ct - c[i] * st
-                yc1 += yc[i] * cr; ys1 += yc[i] * sr
-                cc += cr * cr; ss += sr * sr
-            }
-            power[k] = 0.5 * ((cc > 0 ? yc1 * yc1 / cc : 0) + (ss > 0 ? ys1 * ys1 / ss : 0))
-            for i in 0..<n {
-                let nc = c[i] * dc[i] - s[i] * ds[i]
-                s[i] = s[i] * dc[i] + c[i] * ds[i]
-                c[i] = nc
-            }
+            let ycT = yc0 * ct + ys0 * st
+            let ysT = ys0 * ct - yc0 * st
+            let ccT = cc0 * ct * ct + 2 * cs0 * ct * st + ss0 * st * st
+            let ssT = ss0 * ct * ct - 2 * cs0 * ct * st + cc0 * st * st
+            power[k] = 0.5 * ((ccT > 1e-12 ? ycT * ycT / ccT : 0) + (ssT > 1e-12 ? ysT * ysT / ssT : 0))
         }
         return power
     }
