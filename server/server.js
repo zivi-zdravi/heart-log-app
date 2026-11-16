@@ -106,6 +106,28 @@ const MEAL_TOOL = {
 
 const MEAL_SYSTEM = `You turn a description or photo of a meal into a list of foods with amounts and nutrition, for a personal food log. Use typical USDA values. Split mixed dishes into their main parts when that helps accuracy (e.g. salmon, rice, oil). Include cooking fats and sauces only when stated or clearly visible, and mark them as guesses when you assume the amount. Keep names short. ${STYLE}`;
 
+// Claude occasionally omits a field or writes a number as text; make the
+// reply exactly the shape the app expects.
+function tidyMeal(out) {
+  const n = v => { const x = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/[^0-9.]/g, '')); return Number.isFinite(x) ? x : 0; };
+  let items = out.items;
+  if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+  items = (Array.isArray(items) ? items : []).filter(i => i && typeof i === 'object').map(i => ({
+    name: String(i.name || 'Food'),
+    usda_query: String(i.usda_query || i.name || 'food'),
+    amount_text: String(i.amount_text || '1 serving'),
+    grams: n(i.grams), calories: n(i.calories), protein_g: n(i.protein_g), carbs_g: n(i.carbs_g), fat_g: n(i.fat_g),
+    guess: Boolean(i.guess), note: i.note ? String(i.note) : '',
+  }));
+  const sum = items.reduce((a, i) => a + i.calories, 0);
+  return {
+    items,
+    calories_low: out.calories_low == null ? sum : n(out.calories_low),
+    calories_high: out.calories_high == null ? sum : n(out.calories_high),
+    unclear: out.unclear ? String(out.unclear) : '',
+  };
+}
+
 async function claude(body) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -142,7 +164,7 @@ async function meal(who, { text, image, mediaType, note, avoid }) {
   record(who, model, j.usage);
   const out = j.content?.find(c => c.type === 'tool_use')?.input;
   if (!out) throw Object.assign(new Error('No result from Claude'), { status: 502 });
-  return out;
+  return tidyMeal(out);
 }
 
 const ASK_SYSTEM = `You help one person understand their own data from a personal health tracker app (sleep, recovery, heart rate, HRV, activity, meals, water). You get their question and daily summaries as JSON. Answer from those numbers: be specific, quote the relevant figures, say how many days the answer rests on, and say plainly when the sample is small or another factor could explain a pattern. If the data cannot answer the question, say what is missing. Keep it short: a few sentences or a short list. Use plain text with simple "-" bullets and **bold** at most; no tables, headings or code blocks (the app shows plain text). This is general information, not medical advice; if something looks like a health concern, suggest they talk to a doctor. ${STYLE}`;

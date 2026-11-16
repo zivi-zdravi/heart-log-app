@@ -13,11 +13,49 @@ struct AIMealResult: Codable, Equatable {
         var fat_g: Double
         var guess: Bool
         var note: String?
+
+        init(name: String, usda_query: String, amount_text: String, grams: Double, calories: Double,
+             protein_g: Double, carbs_g: Double, fat_g: Double, guess: Bool, note: String?) {
+            self.name = name; self.usda_query = usda_query; self.amount_text = amount_text; self.grams = grams
+            self.calories = calories; self.protein_g = protein_g; self.carbs_g = carbs_g; self.fat_g = fat_g
+            self.guess = guess; self.note = note
+        }
+
+        // Claude occasionally leaves a field out or writes a number as text;
+        // fill the gap instead of failing the whole meal.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            func num(_ k: CodingKeys) -> Double {
+                if let v = try? c.decode(Double.self, forKey: k) { return v }
+                if let s = try? c.decode(String.self, forKey: k) { return Double(s.filter { "0123456789.".contains($0) }) ?? 0 }
+                return 0
+            }
+            name = (try? c.decode(String.self, forKey: .name)) ?? "Food"
+            usda_query = (try? c.decode(String.self, forKey: .usda_query)) ?? name
+            amount_text = (try? c.decode(String.self, forKey: .amount_text)) ?? "1 serving"
+            grams = num(.grams)
+            calories = num(.calories)
+            protein_g = num(.protein_g)
+            carbs_g = num(.carbs_g)
+            fat_g = num(.fat_g)
+            guess = (try? c.decode(Bool.self, forKey: .guess)) ?? false
+            note = try? c.decode(String.self, forKey: .note)
+        }
     }
     var items: [Item]
     var calories_low: Double
     var calories_high: Double
     var unclear: String?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = (try? c.decode([Item].self, forKey: .items)) ?? []
+        let sum = items.reduce(0) { $0 + $1.calories }
+        calories_low = (try? c.decode(Double.self, forKey: .calories_low)) ?? sum
+        calories_high = (try? c.decode(Double.self, forKey: .calories_high)) ?? sum
+        unclear = try? c.decode(String.self, forKey: .unclear)
+        if items.isEmpty && (unclear ?? "").isEmpty { unclear = "Claude couldn't find any foods in that. Try describing it a little differently." }
+    }
 }
 
 /// One food from an AI estimate, ready to log. `food` carries USDA's numbers

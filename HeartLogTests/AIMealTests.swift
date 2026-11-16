@@ -56,4 +56,16 @@ final class AIMealTests: XCTestCase {
     func testOldSettingsFileKeepsDefaults() throws {
         XCTAssertEqual(try JSONDecoder().decode(AISettings.self, from: Data("{}".utf8)), AISettings())
     }
+
+    func testToleratesMissingAndTextFields() throws {
+        let messy = #"{"items":[{"name":"Bratwurst","usda_query":"bratwurst","amount_text":"1 link","grams":"85 g","calories":"283","protein_g":12,"carbs_g":2,"fat_g":25}]}"#
+        let r = try JSONDecoder().decode(AIMealResult.self, from: Data(messy.utf8))
+        XCTAssertEqual(r.items.first?.grams, 85)
+        XCTAssertEqual(r.items.first?.calories, 283)
+        XCTAssertEqual(r.items.first?.guess, false)
+        XCTAssertEqual(r.calories_low, 283)
+        XCTAssertEqual(r.calories_high, 283)
+        let none = try JSONDecoder().decode(AIMealResult.self, from: Data(#"{"items":[]}"#.utf8))
+        XCTAssertFalse((none.unclear ?? "").isEmpty)
+    }
 }
