@@ -53,7 +53,7 @@ struct SettingsView: View {
                 link("Notifications", "Battery, water, steps, wind-down", "\(notify.settings.onCount) on", "bell.fill", Theme.blue) { NotificationsView() }
                 link("Double-tap", "What a double-tap on the band does", "", "hand.tap.fill", Color(hex: 0xDDE5E0)) { DoubleTapView() }
                 link("Meals and water", "Goal, water, avoid list, food database", "", "fork.knife", Theme.green) { MealsSettingsView() }
-                link("Body log", "Blood pressure, and symptoms and cycle soon", body_.data.settings.anyOn ? "\(body_.data.settings.countOn) on" : "Off", "heart.text.square.fill", Color(hex: 0xC7A6E8)) { BodySettingsView() }
+                link("Body log", "Blood pressure, symptoms, and cycle soon", body_.data.settings.anyOn ? "\(body_.data.settings.countOn) on" : "Off", "heart.text.square.fill", Color(hex: 0xC7A6E8)) { BodySettingsView() }
                 link("Steps", "The steps Shortcut and how to set it up", StepsLog.lastUpdate.map { "Ran \($0.formatted(date: .omitted, time: .shortened))" } ?? "", "figure.walk", Theme.green) { StepsSettingsView() }
                 link("AI", "Home server, what Claude can help with", ai.isSetUp ? "Set up" : "Not set up", "sparkle", Theme.blue) { AISettingsView() }
             }

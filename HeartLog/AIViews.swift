@@ -580,6 +580,8 @@ enum AskContext {
         let water = WaterStore.shared.data
         let bodyData = BodyStore.shared.data
         let shareBP = bodyData.settings.includeInAsk && bodyData.settings.bloodPressure && !bodyData.bp.isEmpty
+        let shareSymptoms = bodyData.settings.includeInAsk && bodyData.settings.menopause
+            && (!bodyData.events.isEmpty || !bodyData.ratings.isEmpty)
         let bands = BandHistoryStore.shared.days
         let hm: (Int64) -> String = { ms in
             let c = cal.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: Double(ms) / 1000))
@@ -628,10 +630,24 @@ enum AskContext {
                     }
                 if !readings.isEmpty { d["blood_pressure"] = readings }
             }
+            if shareSymptoms {
+                var sym: [String: Any] = [:]
+                for name in BodyMath.counted {
+                    let times = bodyData.events.filter { e in
+                        guard e.name == name else { return false }
+                        let k = name == "Night sweats" ? BodyMath.nightKey(e.time, calendar: cal)
+                            : HistoryImport.dayKey(Date(timeIntervalSince1970: Double(e.time) / 1000), calendar: cal)
+                        return k == r.day
+                    }.map { hm($0.time) }.sorted()
+                    if !times.isEmpty { sym[name.lowercased() + (name == "Night sweats" ? " (the night before)" : "")] = times }
+                }
+                for (name, level) in bodyData.ratings[r.day] ?? [:] { sym[name.lowercased()] = "\(level) of 3, \(BodyMath.levels[level])" }
+                if !sym.isEmpty { d["symptoms"] = sym }
+            }
             rows.append(d.compactMapValues { $0 is NSNull ? nil : $0 })
         }
         let json: [String: Any] = ["days": rows, "note": "One row per day, keyed by the date the person woke up. Missing fields were not measured."]
-        let desc = "Your question, plus daily summaries for \(rows.count) days: recovery, sleep score and times, sleep stages where known, HRV, resting heart rate, breathing rate, strain, calories, meal times and water\(shareBP ? ", blood pressure readings" : ""). No names, no raw heart data, no photos."
+        let desc = "Your question, plus daily summaries for \(rows.count) days: recovery, sleep score and times, sleep stages where known, HRV, resting heart rate, breathing rate, strain, calories, meal times and water\(shareBP ? ", blood pressure readings" : "")\(shareSymptoms ? ", symptoms you logged" : ""). No names, no raw heart data, no photos."
         return (json, desc)
     }
 }

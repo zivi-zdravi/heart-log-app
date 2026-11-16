@@ -63,6 +63,14 @@ struct BodyLogCard: View {
                         }
                         .font(.system(size: 14))
                     }
+                    if store.data.settings.menopause, let line = SymptomSummary.todayLine(store.data) {
+                        HStack {
+                            Text("Symptoms").foregroundColor(Theme.dim)
+                            Spacer()
+                            Text(line).foregroundColor(Theme.text).lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                        .font(.system(size: 14))
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -91,6 +99,17 @@ struct BodyLogView: View {
                               note: store.data.bp.first.map { "Last: \(BodyMath.text($0)), \(Theme.clock($0.time))" } ?? "No readings yet")
                     }
                     .buttonStyle(.plain)
+                }
+                if store.data.settings.menopause {
+                    NavigationLink { SymptomsView() } label: {
+                        entry(icon: "thermometer.medium", color: Color(hex: 0xC7A6E8), title: "Symptoms",
+                              note: SymptomSummary.todayLine(store.data) ?? store.data.settings.symptoms.joined(separator: ", "))
+                    }
+                    .buttonStyle(.plain)
+                    Text("Quick log, today").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.dim).padding(.top, 4)
+                    SymptomQuickLog()
+                    Text("Tap +1 each time; the time is saved so it can be lined up with your sleep and heart rate.")
+                        .font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 if !store.data.settings.anyOn {
                     Text("Nothing is turned on. Choose what to track in Settings, Body log.").font(.system(size: 14)).foregroundColor(soft)
@@ -311,8 +330,21 @@ struct BodySettingsView: View {
         Form {
             Section {
                 Toggle(isOn: binding(\.bloodPressure)) { row("Blood pressure", "Readings you enter by hand") }
+                Toggle(isOn: binding(\.menopause)) { row("Menopause symptoms", "Hot flashes, night sweats and more") }
             } footer: {
-                Text("Turn on only what you want to track. Anything turned off disappears from Today and the Body log screen; what you already logged is kept. Symptoms and cycle tracking come next.")
+                Text("Turn on only what you want to track. Anything turned off disappears from Today and the Body log screen; what you already logged is kept. Cycle tracking comes next.")
+            }
+            if store.settings.menopause {
+                Section {
+                    ToggleChips(items: BodyMath.allSymptoms, selected: Binding(
+                        get: { Set(store.settings.symptoms) },
+                        set: { v in var st = store.settings; st.symptoms = BodyMath.allSymptoms.filter { v.contains($0) }; store.settings = st }))
+                        .padding(.vertical, 6)
+                } header: {
+                    Text("Symptoms to show")
+                } footer: {
+                    Text("Hot flashes, night sweats and palpitations are logged each time. The others get a 0 to 3 rating for the day.")
+                }
             }
             Section {
                 Toggle(isOn: binding(\.includeInAsk)) { row("Include in Ask", "Lets Ask use your Body log summaries") }
@@ -332,5 +364,303 @@ struct BodySettingsView: View {
             Text(title)
             Text(note).font(.system(size: 13)).foregroundColor(Theme.dim)
         }
+    }
+}
+
+// MARK: - Symptoms
+
+enum SymptomSummary {
+    private static var cal: Calendar { .current }
+    private static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+
+    /// Start of the window a counted symptom is shown for: night sweats from 6 PM yesterday, the rest from midnight.
+    static func windowStart(_ name: String) -> Int64 {
+        let today = cal.startOfDay(for: Date())
+        if name == "Night sweats", let evening = cal.date(byAdding: .hour, value: -6, to: today) {
+            return Int64(evening.timeIntervalSince1970 * 1000)
+        }
+        return Int64(today.timeIntervalSince1970 * 1000)
+    }
+
+    static func todayEvents(_ data: BodyData, _ name: String) -> [SymptomEvent] {
+        let from = windowStart(name)
+        return data.events.filter { $0.name == name && $0.time >= from && $0.time <= now() }.sorted { $0.time < $1.time }
+    }
+
+    /// "2 night sweats, 1 hot flash" or nil when nothing is logged.
+    static func todayLine(_ data: BodyData) -> String? {
+        var parts: [String] = []
+        for name in data.settings.symptoms where BodyMath.counted.contains(name) {
+            let n = todayEvents(data, name).count
+            guard n > 0 else { continue }
+            let word = name.lowercased()
+            parts.append("\(n) \(n == 1 ? singular(word) : word)")
+        }
+        let key = DayEngine.shared.key(Date())
+        for name in data.settings.symptoms where !BodyMath.counted.contains(name) {
+            if let l = data.ratings[key]?[name], l > 0 { parts.append("\(name.lowercased()) \(BodyMath.levels[l])") }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    static func singular(_ w: String) -> String {
+        if w.hasSuffix("flashes") { return String(w.dropLast(2)) }
+        if w.hasSuffix("s") { return String(w.dropLast()) }
+        return w
+    }
+}
+
+/// +1 buttons for counted symptoms and 0 to 3 ratings for the rest, for today.
+struct SymptomQuickLog: View {
+    @ObservedObject private var store = BodyStore.shared
+    @State private var editing: SymptomEvent?
+
+    private var key: String { DayEngine.shared.key(Date()) }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ForEach(store.data.settings.symptoms, id: \.self) { name in
+                if BodyMath.counted.contains(name) { countRow(name) } else { ratingRow(name) }
+            }
+        }
+        .sheet(item: $editing) { e in EventEditSheet(event: e) }
+    }
+
+    private func countRow(_ name: String) -> some View {
+        let list = SymptomSummary.todayEvents(store.data, name)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(name).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                Spacer()
+                Text("\(list.count)").font(Theme.display(22)).foregroundColor(Theme.text).monospacedDigit()
+                Button {
+                    store.change { $0.addEvent(SymptomEvent(id: UUID().uuidString, time: Int64(Date().timeIntervalSince1970 * 1000), name: name)) }
+                } label: {
+                    Text("+1").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.bg)
+                        .frame(width: 56, height: 40).background(Color(hex: 0xC7A6E8)).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Log one \(SymptomSummary.singular(name.lowercased()))")
+            }
+            if !list.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(list) { e in
+                            Button { editing = e } label: {
+                                Text(Theme.clock(e.time)).font(.system(size: 12)).foregroundColor(Theme.text)
+                                    .padding(.horizontal, 10).frame(minHeight: 30).background(Theme.raised).clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Change the time or delete")
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(Theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func ratingRow(_ name: String) -> some View {
+        let current = store.data.ratings[key]?[name]
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(name).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                Spacer()
+                Text(current.map { BodyMath.levels[$0] } ?? "not logged").font(.system(size: 13)).foregroundColor(Theme.dim)
+            }
+            HStack(spacing: 6) {
+                ForEach(0..<4, id: \.self) { l in
+                    Button {
+                        let k = key
+                        store.change { $0.rate(name, day: k, level: current == l ? nil : l) }
+                    } label: {
+                        Text("\(l)").font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(current == l ? Theme.bg : Theme.text)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(current == l ? Color(hex: 0xC7A6E8) : Theme.raised)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(name), \(BodyMath.levels[l])")
+                    .accessibilityAddTraits(current == l ? .isSelected : [])
+                }
+            }
+        }
+        .padding(14)
+        .background(Theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+struct EventEditSheet: View {
+    let event: SymptomEvent
+    @Environment(\.dismiss) private var dismiss
+    @State private var time = Date()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker(event.name, selection: $time, in: ...Date())
+                Button("Delete", role: .destructive) {
+                    BodyStore.shared.change { $0.events.removeAll { $0.id == event.id } }
+                    dismiss()
+                }
+            }
+            .navigationTitle("Change time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        var e = event
+                        e.time = Int64(time.timeIntervalSince1970 * 1000)
+                        BodyStore.shared.change { $0.addEvent(e) }
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .onAppear { time = Date(timeIntervalSince1970: Double(event.time) / 1000) }
+    }
+}
+
+private struct SweatCompare {
+    var withN = 0, withoutN = 0
+    var score: (Double?, Double?) = (nil, nil)
+    var awake: (Double?, Double?) = (nil, nil)
+    var asleep: (Double?, Double?) = (nil, nil)
+}
+
+private struct FlashDay: Identifiable {
+    let day: Date
+    let count: Int
+    var id: Date { day }
+}
+
+struct SymptomsView: View {
+    @ObservedObject private var store = BodyStore.shared
+    @State private var compare: SweatCompare?
+
+    private var cal: Calendar { .current }
+
+    private var flashDays: [FlashDay] {
+        let today = cal.startOfDay(for: Date())
+        return (0..<30).reversed().compactMap { i in
+            guard let d = cal.date(byAdding: .day, value: -i, to: today) else { return nil }
+            let n = store.data.events.filter { $0.name == "Hot flashes" && cal.isDate(Date(timeIntervalSince1970: Double($0.time) / 1000), inSameDayAs: d) }.count
+            return FlashDay(day: d, count: n)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Symptoms").font(Theme.display(30)).foregroundColor(Theme.text)
+                Text("Today and last night").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.dim)
+                SymptomQuickLog()
+                Text("0 none, 1 mild, 2 noticeable, 3 bad. Night-sweat times can be rough; tap a time to change it.")
+                    .font(.system(size: 12)).foregroundColor(Theme.dim)
+                NavigationLink { BodySettingsView() } label: {
+                    Text("+ Brain fog, mood, headache, other").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.blue).frame(minHeight: 44)
+                }
+                if store.data.settings.symptoms.contains("Night sweats") { sweatCard }
+                if store.data.settings.symptoms.contains("Hot flashes") { flashCard }
+                Text("Shown on your phone only. Zdravlje doesn't diagnose; talk with your doctor about anything that worries you.")
+                    .font(.system(size: 12)).foregroundColor(Theme.dim)
+            }
+            .padding(20)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadCompare() }
+    }
+
+    @ViewBuilder private var sweatCard: some View {
+        Card {
+            Text("Night sweats and your sleep, last 30 nights").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            if let c = compare, c.withN >= 3, c.withoutN >= 3 {
+                HStack {
+                    Text("").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("With sweats").frame(width: 90, alignment: .trailing)
+                    Text("Without").frame(width: 70, alignment: .trailing)
+                }
+                .font(.system(size: 12)).foregroundColor(Theme.dim)
+                compareRow("Sleep score", c.score) { "\(Int($0.rounded()))" }
+                compareRow("Times awake", c.awake) { "\(Int($0.rounded()))" }
+                compareRow("Asleep", c.asleep) { Theme.duration($0 * 60) }
+                if let a = c.asleep.0, let b = c.asleep.1 {
+                    let diff = Int((b - a).rounded())
+                    Text("\(c.withN) nights with sweats, \(c.withoutN) without." + (diff >= 10 ? " Sweats cost you about \(diff) minutes of sleep a night." : ""))
+                        .font(.system(size: 13)).foregroundColor(Color(hex: 0xC9D3CE))
+                }
+            } else {
+                Text("Shows once you have at least 3 nights with sweats and 3 without, with the band on.")
+                    .font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+            }
+        }
+    }
+
+    private func compareRow(_ label: String, _ v: (Double?, Double?), _ f: (Double) -> String) -> some View {
+        HStack {
+            Text(label).frame(maxWidth: .infinity, alignment: .leading)
+            Text(v.0.map(f) ?? "--").fontWeight(.semibold).frame(width: 90, alignment: .trailing)
+            Text(v.1.map(f) ?? "--").fontWeight(.semibold).frame(width: 70, alignment: .trailing)
+        }
+        .font(.system(size: 15)).foregroundColor(Theme.text).frame(minHeight: 32)
+    }
+
+    @ViewBuilder private var flashCard: some View {
+        let days = flashDays
+        let total = days.map(\.count).reduce(0, +)
+        Card {
+            HStack {
+                Text("Hot flashes, last 30 days").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                Spacer()
+                Text("\(total) logged").font(.system(size: 13)).foregroundColor(Theme.dim)
+            }
+            if total > 0 {
+                Chart(days) { d in
+                    BarMark(x: .value("Day", d.day, unit: .day), y: .value("Hot flashes", d.count)).foregroundStyle(Color(hex: 0xC7A6E8))
+                }
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()) } }
+                .chartYAxis { AxisMarks(values: .automatic(desiredCount: 3)) { _ in AxisGridLine(); AxisValueLabel() } }
+                .frame(height: 120)
+                let since = Int64((cal.date(byAdding: .day, value: -30, to: Date()) ?? Date()).timeIntervalSince1970 * 1000)
+                if let h = BodyMath.busiestHours(store.data.events.filter { $0.name == "Hot flashes" && $0.time >= since }.map(\.time), calendar: cal) {
+                    Text("Most often between \(BodyMath.hourText(h)) and \(BodyMath.hourText(h + 3)).")
+                        .font(.system(size: 13)).foregroundColor(Color(hex: 0xC9D3CE))
+                }
+            } else {
+                Text("Nothing logged yet. Tap +1 when one starts.").font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+            }
+        }
+    }
+
+    private func loadCompare() async {
+        let events = store.data.events.filter { $0.name == "Night sweats" }
+        let settings = SettingsStore.shared.value
+        let result = await Task.detached(priority: .userInitiated) { () -> SweatCompare in
+            let cal = Calendar.current
+            let today = cal.startOfDay(for: Date())
+            let sweatNights = Set(events.map { BodyMath.nightKey($0.time, calendar: cal) })
+            var with: [DayRecord] = [], without: [DayRecord] = []
+            for i in 0..<30 {
+                guard let d = cal.date(byAdding: .day, value: -i, to: today),
+                      let r = DayEngine.shared.record(d, settings: settings), r.sleep != nil else { continue }
+                if sweatNights.contains(r.day) { with.append(r) } else { without.append(r) }
+            }
+            func m(_ rs: [DayRecord], _ f: (DayRecord) -> Double?) -> Double? { TrendMath.mean(rs.compactMap(f)) }
+            var c = SweatCompare()
+            c.withN = with.count
+            c.withoutN = without.count
+            c.score = (m(with) { $0.sleepScore }, m(without) { $0.sleepScore })
+            c.awake = (m(with) { $0.sleep?.awakeEvents.map(Double.init) }, m(without) { $0.sleep?.awakeEvents.map(Double.init) })
+            c.asleep = (m(with) { $0.sleep?.asleepMin }, m(without) { $0.sleep?.asleepMin })
+            return c
+        }.value
+        compare = result
     }
 }

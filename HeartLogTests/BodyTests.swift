@@ -52,4 +52,30 @@ final class BodyTests: XCTestCase {
         XCTAssertEqual(BodyMath.when(ms(16, 19), now: now, calendar: cal), "this evening")
         XCTAssertEqual(BodyMath.when(ms(15, 7), now: now, calendar: cal), "yesterday")
     }
+
+    func testSymptoms() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let ms: (Int, Int) -> Int64 = { day, hour in Int64(cal.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour))!.timeIntervalSince1970 * 1000) }
+        XCTAssertEqual(BodyMath.nightKey(ms(15, 23), calendar: cal), "2026-11-16")
+        XCTAssertEqual(BodyMath.nightKey(ms(16, 3), calendar: cal), "2026-11-16")
+        XCTAssertNil(BodyMath.busiestHours([ms(16, 14)], calendar: cal))
+        let times = [ms(16, 13), ms(16, 14), ms(15, 14), ms(14, 15), ms(13, 8)]
+        XCTAssertEqual(BodyMath.busiestHours(times, calendar: cal), 13)
+        XCTAssertEqual(BodyMath.hourText(13), "1 PM")
+        XCTAssertEqual(BodyMath.hourText(0), "midnight")
+
+        var d = BodyData()
+        d.addEvent(SymptomEvent(id: "a", time: 1, name: "Hot flashes"))
+        d.rate("Joint aches", day: "2026-11-16", level: 5)
+        XCTAssertEqual(d.ratings["2026-11-16"]?["Joint aches"], 3)
+        d.rate("Joint aches", day: "2026-11-16", level: nil)
+        XCTAssertNil(d.ratings["2026-11-16"])
+        var other = BodyData()
+        other.addEvent(SymptomEvent(id: "b", time: 2, name: "Night sweats"))
+        other.rate("Mood", day: "2026-11-15", level: 2)
+        XCTAssertEqual(d.merge(other), 1)
+        XCTAssertEqual(d.events.map(\.id), ["b", "a"])
+        XCTAssertEqual(d.ratings["2026-11-15"]?["Mood"], 2)
+    }
 }
