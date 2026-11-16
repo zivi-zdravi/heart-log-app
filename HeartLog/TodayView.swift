@@ -253,7 +253,6 @@ struct TodayView: View {
                         Text(DetailMath.recoveryHeadline(r?.recovery)).font(.system(size: 18, weight: .semibold)).foregroundColor(Theme.text)
                         Text(DetailMath.recoveryReason(recovery: r?.recovery, hrv: r?.hrv, usualHRV: r?.usualHRV, rhr: r?.rhr, usualRHR: r?.usualRHR))
                             .font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE)).fixedSize(horizontal: false, vertical: true)
-                        Text(whoop ? "WHOOP scores" : "Estimates").font(.system(size: 12)).foregroundColor(Theme.dim)
                     }
                     Spacer(minLength: 0)
                 }

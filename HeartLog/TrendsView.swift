@@ -15,6 +15,8 @@ struct TrendMetric {
     var lowerIsBetter = false
     var weekStyle: WeekStyle = .bars
     var night = false
+    /// Shows a chevron: the card opens a detail page.
+    var opens = false
 }
 
 private func keyDate(_ key: String) -> Date? {
@@ -83,24 +85,39 @@ struct TrendsView: View {
                     if loading {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 160)
                     } else {
-                        chart(TrendMetric(title: "Recovery", color: Theme.green, unit: "%", colorize: true, fixed: 0...100)) { $0.recovery }
-                        chart(TrendMetric(title: "Overnight HRV", color: Theme.blue, unit: " ms", minSpan: 15, weekStyle: .line, night: true),
-                              usual: records.last?.usualHRV) { $0.hrv }
-                        chart(TrendMetric(title: "Resting heart rate", color: Theme.orange, minSpan: 10, lowerIsBetter: true, weekStyle: .line, night: true),
-                              usual: records.last?.usualRHR) { $0.rhr.map { Double($0) } }
+                        if let last = records.last(where: { $0.recovery != nil }) {
+                            NavigationLink { RecoveryView(day: keyDate(last.day) ?? today, record: last) } label: {
+                                chart(TrendMetric(title: "Recovery", color: Theme.green, unit: "%", colorize: true, fixed: 0...100, opens: true)) { $0.recovery }
+                            }
+                        } else {
+                            chart(TrendMetric(title: "Recovery", color: Theme.green, unit: "%", colorize: true, fixed: 0...100)) { $0.recovery }
+                        }
+                        NavigationLink { MetricDetailView(kind: .hrv, day: today) } label: {
+                            chart(TrendMetric(title: "Overnight HRV", color: Theme.blue, unit: " ms", minSpan: 15, weekStyle: .line, night: true, opens: true),
+                                  usual: records.last?.usualHRV) { $0.hrv }
+                        }
+                        NavigationLink { MetricDetailView(kind: .rhr, day: today) } label: {
+                            chart(TrendMetric(title: "Resting heart rate", color: Theme.orange, minSpan: 10, lowerIsBetter: true, weekStyle: .line, night: true, opens: true),
+                                  usual: records.last?.usualRHR) { $0.rhr.map { Double($0) } }
+                        }
                         chart(TrendMetric(title: "Breathing rate", color: Theme.blue, unit: "/min", decimals: 1, minSpan: 3, weekStyle: .line, night: true),
                               usual: SleepMath.median(records.suffix(30).compactMap(\.respRate))) { $0.respRate }
                         chart(TrendMetric(title: "Sleep score", color: Theme.blue, colorize: true, fixed: 0...100, night: true)) { $0.sleepScore }
-                        CaloriesTrend(range: range, start: start, today: today, burned: values { $0.calories }, eaten: eatenValues, goal: goal)
+                        NavigationLink { CaloriesDetailView(day: today) } label: {
+                            CaloriesTrend(range: range, start: start, today: today, burned: values { $0.calories }, eaten: eatenValues, goal: goal)
+                        }
                         chart(TrendMetric(title: "Hours slept", color: Theme.blue, unit: " h", decimals: 1, minSpan: 3, night: true)) { $0.sleep.map { $0.asleepMin / 60 } }
                         chart(TrendMetric(title: "Strain", color: Theme.orange, decimals: 1, minSpan: 6)) { $0.strain }
-                        TrendChart(metric: TrendMetric(title: "Steps", color: Theme.green, minSpan: 3000), range: range, start: start, today: today,
-                                   values: stepValues, usual: nil)
+                        NavigationLink { StepsHistoryView() } label: {
+                            TrendChart(metric: TrendMetric(title: "Steps", color: Theme.green, minSpan: 3000, opens: true), range: range, start: start, today: today,
+                                       values: stepValues, usual: nil)
+                        }
                     }
                     Text("Faded marks are WHOOP history. Bright marks are days Zdravlje calculated from your band.")
                         .font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
+                .buttonStyle(.plain)
             }
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
@@ -171,6 +188,7 @@ struct TrendChart: View {
         Card {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(metric.title).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                if metric.opens { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim) }
                 Spacer()
                 Text(headline).font(.system(size: 13)).foregroundColor(Theme.dim).multilineTextAlignment(.trailing)
             }
@@ -385,6 +403,7 @@ struct CaloriesTrend: View {
         Card {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("Calories").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim)
                 Spacer()
                 Text(headline).font(.system(size: 13)).foregroundColor(Theme.dim).multilineTextAlignment(.trailing)
             }

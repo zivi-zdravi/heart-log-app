@@ -53,7 +53,7 @@ struct SettingsView: View {
                 link("Notifications", "Battery, water, steps, wind-down", "\(notify.settings.onCount) on", "bell.fill", Theme.blue) { NotificationsView() }
                 link("Double-tap", "What a double-tap on the band does", "", "hand.tap.fill", Color(hex: 0xDDE5E0)) { DoubleTapView() }
                 link("Meals and water", "Goal, water, avoid list, food database", "", "fork.knife", Theme.green) { MealsSettingsView() }
-                link("Body log", "Blood pressure, cycle, symptoms", body_.data.settings.anyOn ? "\(body_.data.settings.countOn) on" : "Off", "heart.text.square.fill", Color(hex: 0xC7A6E8)) { BodySettingsView() }
+                link("Body log", "Blood pressure, cycle, menopause", body_.data.settings.anyOn ? "\(body_.data.settings.countOn) on" : "Off", "heart.text.square.fill", Color(hex: 0xC7A6E8)) { BodySettingsView() }
                 link("Steps", "The steps Shortcut and how to set it up", StepsLog.lastUpdate.map { "Ran \($0.formatted(date: .omitted, time: .shortened))" } ?? "", "figure.walk", Theme.green) { StepsSettingsView() }
                 link("AI", "Home server, what Claude can help with", ai.isSetUp ? "Set up" : "Not set up", "sparkle", Theme.blue) { AISettingsView() }
             }
@@ -399,9 +399,6 @@ struct AboutView: View {
     @ObservedObject private var link = BandLink.shared
     @ObservedObject private var capture = BandCapture.shared
     @State private var sessions: [String] = []
-    @State private var report = ""
-    @State private var selected: String?
-    @State private var copied = false
 
     /// Shows what the imports put on this phone.
     private var whoopSummary: String {
@@ -448,20 +445,38 @@ struct AboutView: View {
                 Text("Read straight from the band, without the WHOOP app. Heart rate comes from the standard broadcast, which keeps working either way.")
             }
             if !sessions.isEmpty {
-                Section("Recording report") {
-                    Picker("Recording", selection: Binding(get: { selected ?? "" }, set: { refresh($0) })) {
-                        ForEach(sessions, id: \.self) { Text(Report.title($0)).tag($0) }
-                    }
-                    Text(report).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
-                    Button(copied ? "Copied" : "Copy report") {
-                        UIPasteboard.general.string = report
-                        copied = true
-                    }
-                    if let id = selected { ShareLink("Save data file", item: Store.shared.samplesURL(id)) }
+                Section {
+                    NavigationLink("Recording reports") { RecordingReportsView() }
                 }
             }
         }
         .settingsPage("About and troubleshooting")
+        .onAppear { sessions = Store.shared.sessions() }
+    }
+}
+
+struct RecordingReportsView: View {
+    @ObservedObject private var r = Recorder.shared
+    @State private var sessions: [String] = []
+    @State private var report = ""
+    @State private var selected: String?
+    @State private var copied = false
+
+    var body: some View {
+        List {
+            Section {
+                Picker("Recording", selection: Binding(get: { selected ?? "" }, set: { refresh($0) })) {
+                    ForEach(sessions, id: \.self) { Text(Report.title($0)).tag($0) }
+                }
+                Text(report).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                Button(copied ? "Copied" : "Copy report") {
+                    UIPasteboard.general.string = report
+                    copied = true
+                }
+                if let id = selected { ShareLink("Save data file", item: Store.shared.samplesURL(id)) }
+            }
+        }
+        .settingsPage("Recording reports")
         .onAppear { refresh(nil) }
     }
 

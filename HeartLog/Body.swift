@@ -115,6 +115,19 @@ enum BodyMath {
     static let counted: Set<String> = ["Hot flashes", "Night sweats", "Heart palpitations"]
     static let levels = ["none", "mild", "noticeable", "bad"]
 
+    /// One of a counted symptom, for "+1" buttons: "Hot flash", "Night sweat", "Palpitation".
+    static func shortName(_ name: String) -> String {
+        switch name {
+        case "Hot flashes": return "Hot flash"
+        case "Night sweats": return "Night sweat"
+        case "Heart palpitations": return "Palpitation"
+        default: return name
+        }
+    }
+
+    /// Wording on quick-log chips.
+    static func chipName(_ name: String) -> String { name == "Sleep disruption" ? "Slept badly" : name }
+
     /// A night sweat at 1 AM belongs to the night before that morning; one at 11 PM to the next morning.
     /// Returns the day key of the morning the night ends on.
     static func nightKey(_ t: Int64, calendar: Calendar) -> String {

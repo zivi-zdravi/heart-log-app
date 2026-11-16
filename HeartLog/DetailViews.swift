@@ -263,13 +263,17 @@ struct CaloriesDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 pageHeader(day, "Calories burned")
                 Card {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(total.map { Int($0).formatted() } ?? "--").font(Theme.display(50)).foregroundColor(Theme.text)
-                        Text(isWhoop ? "WHOOP" : isToday ? "so far today, estimate" : "estimate").font(.system(size: 14)).foregroundColor(Theme.dim)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(total.map { Int($0).formatted() } ?? "--").font(Theme.display(30)).foregroundColor(Theme.text)
+                        Spacer()
+                        Text(isWhoop ? "WHOOP" : isToday ? "so far today, estimate" : "estimate").font(.system(size: 13)).foregroundColor(Theme.dim)
                     }
                     if let t = total, let r = resting {
-                        row("Resting", Int(min(r, t)).formatted(), "just being alive")
-                        row("Active", Int(max(0, t - r)).formatted(), "moving, from heart rate")
+                        HStack(alignment: .top) {
+                            split("Resting", Int(min(r, t)).formatted(), "just being alive")
+                            split("Active", Int(max(0, t - r)).formatted(), "moving, from heart rate")
+                        }
+                        .padding(.top, 2)
                     }
                     if noBody { Text("Add your height, weight and age in Settings to estimate calories.").font(.system(size: 14)).foregroundColor(soft) }
                 }
@@ -344,6 +348,15 @@ struct CaloriesDetailView: View {
         return f.string(from: day.addingTimeInterval(Double(i) * 3600))
     }
 
+    private func split(_ label: String, _ value: String, _ note: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.system(size: 14)).foregroundColor(Theme.dim)
+            Text(value).font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.text)
+            Text(note).font(.system(size: 12)).foregroundColor(Theme.dim)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func row(_ label: String, _ value: String, _ note: String?) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).foregroundColor(Theme.text)
@@ -406,9 +419,9 @@ struct StepsRing: View {
             Circle().trim(from: 0, to: CGFloat(min(1, max(0, fraction))))
                 .stroke(Theme.green, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            Text("\(Int((fraction * 100).rounded()))%").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            Text("\(Int((fraction * 100).rounded()))%").font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.text)
         }
-        .frame(width: 74, height: 74)
+        .frame(width: 88, height: 88)
         .padding(4)
     }
 }
@@ -429,17 +442,17 @@ struct StepsCard: View {
     var body: some View {
         NavigationLink { StepsHistoryView() } label: {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("Steps today").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
-                    Text(today.note.hasPrefix("From Shortcut") ? "from your Shortcut" : "from your phone").font(.system(size: 13)).foregroundColor(Theme.dim)
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.dim)
+                    Text(today.note.hasPrefix("From Shortcut") ? "from your Shortcut" : "from your phone").font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 HStack(spacing: 14) {
                     StepsRing(fraction: Double(today.steps ?? 0) / Double(goal))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(today.steps.map { $0.formatted() } ?? "--").font(Theme.display(30)).foregroundColor(Theme.text)
-                        Text("of your \(goal.formatted()) goal").font(.system(size: 13)).foregroundColor(Theme.dim)
+                        Text(today.steps.map { $0.formatted() } ?? "--").font(Theme.display(32)).foregroundColor(Theme.text)
+                        Text("of your \(goal.formatted()) goal").font(.system(size: 14)).foregroundColor(Theme.dim)
                         if let s = today.steps { Text(DetailMath.stepsLine(steps: s, goal: goal)).font(.system(size: 13)).foregroundColor(soft) }
                     }
                 }
@@ -452,7 +465,7 @@ struct StepsCard: View {
                             Text("average \(Int(avg).formatted())").font(.system(size: 13)).foregroundColor(Theme.dim)
                         }
                     }
-                    StepsBars(days: days, counts: week, goal: goal, label: .dateTime.weekday(.narrow))
+                    StepsBars(days: days, counts: week, goal: goal, label: .dateTime.weekday(.abbreviated), shortWeek: true)
                         .frame(height: 110)
                     footnote("Dashed line: your goal. Goal reached on \(days.filter { (week[$0] ?? 0) >= goal }.count) of 7 days.")
                 }
@@ -481,17 +494,31 @@ struct StepsBars: View {
     let goal: Int
     let label: Date.FormatStyle
     var unit: Calendar.Component = .day
+    /// The week view labels days Tu, W, Th ... and "Today".
+    var shortWeek = false
 
     var body: some View {
         Chart {
             ForEach(days, id: \.self) { d in
                 BarMark(x: .value("Day", d, unit: unit), y: .value("Steps", counts[d] ?? 0))
-                    .foregroundStyle((counts[d] ?? 0) >= goal ? Theme.green : Theme.line)
+                    .foregroundStyle(Theme.blue)
             }
             RuleMark(y: .value("Goal", goal)).foregroundStyle(Theme.dim).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
         }
-        .chartXAxis { AxisMarks(values: days.count > 12 ? AxisMarkValues.automatic(desiredCount: 5) : AxisMarkValues.stride(by: unit)) { _ in AxisValueLabel(format: label) } }
+        .chartXAxis {
+            AxisMarks(values: days.count > 12 ? AxisMarkValues.automatic(desiredCount: 5) : AxisMarkValues.stride(by: unit)) { v in
+                AxisValueLabel {
+                    if shortWeek, let d = v.as(Date.self) { Text(Self.weekLabel(d)) } else if let d = v.as(Date.self) { Text(d, format: label) }
+                }
+            }
+        }
         .chartYAxis { AxisMarks(values: .automatic(desiredCount: 3)) { _ in AxisGridLine(); AxisValueLabel() } }
+    }
+
+    static func weekLabel(_ d: Date) -> String {
+        if Calendar.current.isDateInToday(d) { return "Today" }
+        let names = ["Su", "M", "Tu", "W", "Th", "F", "Sa"]
+        return names[Calendar.current.component(.weekday, from: d) - 1]
     }
 }
 
