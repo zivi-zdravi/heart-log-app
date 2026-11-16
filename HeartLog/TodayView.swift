@@ -47,6 +47,8 @@ struct TodayView: View {
     @ObservedObject private var acts = ActivityStore.shared
     @ObservedObject private var settings = SettingsStore.shared
     @StateObject private var steps = StepsProvider()
+    @ObservedObject private var ai = AIStore.shared
+    @State private var asking = false
     @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var summary = DaySummary()
     @State private var record: DayRecord?
@@ -89,6 +91,7 @@ struct TodayView: View {
             })
         }
         .task(id: day) { await reload() }
+        .sheet(isPresented: $asking) { AskView(range: .week) }
         .followToday($day)
         .onAppear { Task { await reload() } }
         .onReceive(refresh) { _ in
@@ -119,29 +122,41 @@ struct TodayView: View {
         day = d
     }
 
+    private var showAsk: Bool { ai.isSetUp && ai.settings.ask }
+
     private var header: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: showAsk ? .bottom : .top) {
             VStack(alignment: .leading, spacing: 0) {
                 DayChevrons(text: Theme.dayText.string(from: day), canGoForward: !isToday, move: move)
                 Text(isToday ? "Today" : Theme.weekday.string(from: day)).font(Theme.display(30)).foregroundColor(Theme.text)
             }
             Spacer()
-            NavigationLink { SettingsView() } label: {
-                HStack(spacing: 10) {
-                    HStack(spacing: 5) {
-                        Image(systemName: batterySymbol).font(.system(size: 16)).foregroundColor(batteryColor)
-                        Text(rec.battery.map { "\($0)%" } ?? "--").foregroundColor(Theme.text)
+            VStack(alignment: .trailing, spacing: 8) {
+                NavigationLink { SettingsView() } label: {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 5) {
+                            Image(systemName: batterySymbol).font(.system(size: 16)).foregroundColor(batteryColor)
+                            Text(rec.battery.map { "\($0)%" } ?? "--").foregroundColor(Theme.text)
+                        }
+                        Image(systemName: "gearshape").font(.system(size: 18)).foregroundColor(Theme.dim)
                     }
-                    Image(systemName: "gearshape").font(.system(size: 18)).foregroundColor(Theme.dim)
+                    .frame(minHeight: 32)
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Theme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                .frame(minHeight: 32)
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Theme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("Band battery \(rec.battery.map { "\($0) percent" } ?? "unknown")\(rec.charging == true ? ", charging" : ""). Open settings")
+                if showAsk {
+                    Button { asking = true } label: {
+                        Label("Ask", systemImage: "sparkle").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.blue)
+                            .padding(.horizontal, 14).frame(minHeight: 36)
+                            .background(Color(hex: 0x26394A)).clipShape(Capsule())
+                    }
+                    .accessibilityLabel("Ask about your data")
+                }
             }
-            .accessibilityLabel("Band battery \(rec.battery.map { "\($0) percent" } ?? "unknown")\(rec.charging == true ? ", charging" : ""). Open settings")
         }
     }
 
@@ -228,43 +243,40 @@ struct TodayView: View {
         let r = record
         let whoop = r?.isWhoop == true
         return Card {
-            VStack(spacing: 12) {
+            NavigationLink {
+                if let r { RecoveryView(day: day, record: r) }
+            } label: {
+                HStack(spacing: 14) {
+                    RecoveryRing(value: r?.recovery)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(DetailMath.recoveryHeadline(r?.recovery)).font(.system(size: 18, weight: .semibold)).foregroundColor(Theme.text)
+                        Text(DetailMath.recoveryReason(recovery: r?.recovery, hrv: r?.hrv, usualHRV: r?.usualHRV, rhr: r?.rhr, usualRHR: r?.usualRHR))
+                            .font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE)).fixedSize(horizontal: false, vertical: true)
+                        Text(whoop ? "WHOOP scores" : "Estimates").font(.system(size: 12)).foregroundColor(Theme.dim)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(r?.recovery == nil)
+            .accessibilityHint("Opens Recovery")
+            HStack(spacing: 10) {
                 Button { openSleep(day) } label: {
-                    ScoreRow(label: whoop ? "Sleep score (WHOOP)" : "Sleep score (estimate)", value: score(r?.sleepScore),
-                             fraction: r?.sleepScore.map { $0 / 100 }, color: Theme.level(r?.sleepScore))
-                        .contentShape(Rectangle())
+                    MiniScore(title: "Sleep", value: score(r?.sleepScore), fraction: r?.sleepScore.map { $0 / 100 }, color: Theme.blue,
+                              note: r?.sleep.map { "\(Theme.duration($0.asleepMin * 60)) asleep" })
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens Sleep")
-                NavigationLink {
-                    if let r { RecoveryView(day: day, record: r) }
-                } label: {
-                    ScoreRow(label: whoop ? "Recovery (WHOOP)" : "Recovery (estimate)", value: r?.recovery.map { "\(Int($0.rounded()))%" } ?? "--",
-                             fraction: r?.recovery.map { $0 / 100 }, color: Theme.level(r?.recovery))
-                        .contentShape(Rectangle())
+                Button { openActivity() } label: {
+                    MiniScore(title: "Strain", value: strainValue.map { String(format: "%.1f", $0) } ?? "--", fraction: strainValue.map { $0 / 21 },
+                              color: strainColor, note: strainValue == nil ? nil : isToday ? "of 21, so far" : "of 21")
                 }
                 .buttonStyle(.plain)
-                .disabled(r?.recovery == nil)
-                VStack(alignment: .leading, spacing: 5) {
-                    ScoreRow(label: whoop ? "Strain (WHOOP)" : "Strain (estimate)", value: strainValue.map { String(format: "%.1f of 21", $0) } ?? "--",
-                             fraction: strainValue.map { $0 / 21 }, color: strainColor)
-                    if let note = strainNote { Text(note).font(.system(size: 12)).foregroundColor(Theme.dim) }
-                }
+                .accessibilityHint("Opens Activity")
             }
-        }
-    }
-
-    private func suggestion(_ span: Metrics.Span) -> some View {
-        Card {
-            Text("Looks like an activity, \(Theme.clock(span.start)) to \(Theme.clock(span.end))")
-                .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
-            HStack(spacing: 10) {
-                Button("Save it") { acts.add(type: "Activity", start: span.start, end: span.end) }
-                    .buttonStyle(TintButton(color: Theme.green))
-                Button("Not an activity") { acts.add(type: "Dismissed", start: span.start, end: span.end, dismissed: true) }
-                    .buttonStyle(TintButton(color: Theme.text))
-            }
-            .padding(.top, 2)
+            .padding(.top, 4)
+            if let note = strainNote { Text(note).font(.system(size: 12)).foregroundColor(Theme.dim) }
         }
     }
 
@@ -274,12 +286,21 @@ struct TodayView: View {
         let rhr = r?.rhr ?? summary.resting
         let cal = r?.calories ?? summary.calories
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            Tile(title: "HRV, overnight", value: hrv.map { "\(Int($0.rounded())) ms" } ?? "--", note: r?.usualHRV.map { "Usually \(Int($0.rounded()))" })
-            Tile(title: "Resting heart rate", value: rhr.map { "\($0)" } ?? "--", note: r?.usualRHR.map { "Usually \(Int($0.rounded()))" })
-            Tile(title: "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.note.isEmpty ? nil : steps.note)
-            Tile(title: "Calories burned", value: cal.map { Int($0).formatted() } ?? "--",
-                 note: whoopOr(settings.value.body == nil && cal == nil ? "Add your details in Settings" : "Estimate"))
+            NavigationLink { MetricDetailView(kind: .hrv, day: day) } label: {
+                Tile(title: "HRV, overnight", value: hrv.map { "\(Int($0.rounded())) ms" } ?? "--", note: r?.usualHRV.map { "Usually \(Int($0.rounded()))" }, opens: true)
+            }
+            NavigationLink { MetricDetailView(kind: .rhr, day: day) } label: {
+                Tile(title: "Resting heart rate", value: rhr.map { "\($0)" } ?? "--", note: r?.usualRHR.map { "Usually \(Int($0.rounded()))" }, opens: true)
+            }
+            NavigationLink { StepsHistoryView() } label: {
+                Tile(title: "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.note.isEmpty ? nil : steps.note, opens: true)
+            }
+            NavigationLink { CaloriesDetailView(day: day) } label: {
+                Tile(title: "Calories burned", value: cal.map { Int($0).formatted() } ?? "--",
+                     note: whoopOr(settings.value.body == nil && cal == nil ? "Add your details in Settings" : "Estimate"), opens: true)
+            }
         }
+        .buttonStyle(.plain)
     }
 
     private func whoopOr(_ note: String) -> String { record?.isWhoop == true ? "WHOOP" : note }

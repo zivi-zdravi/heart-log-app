@@ -113,9 +113,15 @@ struct Tile: View {
     let title: String
     let value: String
     var note: String?
+    var opens = false
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 13)).foregroundColor(Theme.dim)
+            HStack {
+                Text(title)
+                Spacer(minLength: 0)
+                if opens { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)) }
+            }
+            .font(.system(size: 13)).foregroundColor(Theme.dim)
             Text(value).font(Theme.display(23)).foregroundColor(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
             if let note { Text(note).font(.system(size: 12)).foregroundColor(Theme.dim) }
         }
@@ -124,6 +130,7 @@ struct Tile: View {
         .padding(.vertical, 10)
         .background(Theme.card)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .contentShape(Rectangle())
     }
 }
 

@@ -525,6 +525,11 @@ struct RecoveryView: View {
                             better: record.sleepScore.flatMap { h in record.usualSleep.map { h > $0 + 3 } })
                 }
                 Card {
+                    NavigationLink { MetricDetailView(kind: .hrv, day: day) } label: { detailRow("HRV through the night and last 30 nights") }
+                    Divider().overlay(Theme.track)
+                    NavigationLink { MetricDetailView(kind: .rhr, day: day) } label: { detailRow("Resting heart rate through the night") }
+                }
+                Card {
                     Text(record.isWhoop
                          ? "This day comes from your WHOOP history, so it shows WHOOP's own score."
                          : "HRV counts most, then sleep. Resting heart rate moves with HRV, so it's shown for context. Higher HRV than usual pushes recovery up. Your 30-day usual includes your WHOOP history.")
@@ -536,6 +541,16 @@ struct RecoveryView: View {
         }
         .background(Theme.bg.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func detailRow(_ text: String) -> some View {
+        HStack {
+            Text(text).font(.system(size: 15)).foregroundColor(Theme.text)
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.dim)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private func compare(_ label: String, _ value: String?, _ usual: Double?, better: Bool?) -> some View {

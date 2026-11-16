@@ -53,6 +53,7 @@ struct ActivityTab: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Activity").font(Theme.display(30)).foregroundColor(Theme.text)
+                    StepsCard()
                     if let current = acts.current {
                         Button("Return to \(current.type)") { showLive = true }.buttonStyle(TintButton(color: Theme.orange))
                     } else {
