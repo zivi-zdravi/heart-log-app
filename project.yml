@@ -55,6 +55,7 @@ targets:
       - path: HeartLog/BandNight.swift
       - path: HeartLog/AIMeal.swift
       - path: HeartLog/Detail.swift
+      - path: HeartLog/Body.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests

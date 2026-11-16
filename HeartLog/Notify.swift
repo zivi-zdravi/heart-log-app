@@ -20,6 +20,12 @@ enum NotifyRoute: String, Codable, CaseIterable {
 
 /// Settings > Notifications (approved mockup). Saved in notify.json.
 struct NotifySettings: Codable, Equatable {
+    /// How many notifications are switched on, for the Settings summary.
+    var onCount: Int {
+        [lowBattery, charger, goneQuiet, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water, breathingHigh]
+            .filter { $0 != .off }.count
+    }
+
     var lowBattery: NotifyRoute = .phone
     var lowBatteryAt = 20
     var charger: NotifyRoute = .off

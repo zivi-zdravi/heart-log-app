@@ -2,66 +2,126 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// Settings home: band status on top, then short groups that each open a page.
 struct SettingsView: View {
     @ObservedObject private var r = Recorder.shared
-    @ObservedObject private var link = BandLink.shared
     @ObservedObject private var settings = SettingsStore.shared
-    @ObservedObject private var capture = BandCapture.shared
-    @State private var weight = ""
-    @State private var feet = ""
-    @State private var inches = ""
-    @State private var showZoneInfo = false
-    @State private var showStepsHelp = false
-    @State private var age = ""
-    @State private var sessions: [String] = []
-    @State private var report = ""
-    @State private var selected: String?
-    @State private var copied = false
-    @State private var backupFile: URL?
-    @State private var showSave = false
-    @State private var showRestore = false
-    @State private var busy = false
-    @State private var backupStatus = ""
+    @ObservedObject private var notify = NotifyStore.shared
+    @ObservedObject private var ai = AIStore.shared
+    @ObservedObject private var body_ = BodyStore.shared
     @State private var confirmStop = false
     @AppStorage("lastBackup") private var lastBackup = 0.0
-
-    /// Shows what the imports put on this phone.
-    private var whoopSummary: String {
-        let days = HistoryStore.shared.days.values
-        let b = days.filter { $0.respRate != nil }.count
-        return days.isEmpty ? "None" : "\(days.count) days, \(b) with breathing rate"
-    }
-
-    /// Phase 1: what Zdravlje has heard of the band's history.
-    private var downloadSummary: String {
-        let nights = BandHistoryStore.shared.own.count
-        guard let last = capture.lastData else {
-            return nights == 0 ? "Listening, nothing yet" : "\(nights) night\(nights == 1 ? "" : "s") staged"
-        }
-        let when = Calendar.current.isDateInToday(last) ? last.formatted(date: .omitted, time: .shortened) : last.formatted(date: .abbreviated, time: .shortened)
-        return "Last data \(when), \(nights) night\(nights == 1 ? "" : "s") staged"
-    }
-
-    private var bandSummary: String {
-        let days = BandHistoryStore.shared.imported.values
-        let st = days.filter { !($0.stages ?? []).isEmpty }.count
-        return days.isEmpty ? "None" : "\(days.count) days, \(st) with sleep stages"
-    }
 
     var body: some View {
         List {
             Section {
-                labeled("Name") { TextField("Your name", text: $settings.value.profileName).multilineTextAlignment(.trailing) }
-            } header: {
-                Text("Profile")
-            } footer: {
-                Text("Changes save automatically.")
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Band").font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                        if r.recording {
+                            Label("Recording", systemImage: "circle.fill").labelStyle(.titleAndIcon)
+                                .font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.green)
+                        } else {
+                            Text("Not recording").font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.orange)
+                        }
+                    }
+                    HStack(spacing: 14) {
+                        Text((r.battery.map { "\($0)%" } ?? "Battery unknown") + (r.charging == true ? ", charging" : ""))
+                        Text(r.recording ? r.status : "Tap the band to wake it, then find it").foregroundColor(Theme.dim).lineLimit(1)
+                    }
+                    .font(.system(size: 14))
+                    HStack(spacing: 10) {
+                        NavigationLink { BandDetailsView() } label: {
+                            Text(r.recording ? "Band details" : "Find my band").font(.system(size: 14, weight: .semibold))
+                                .frame(maxWidth: .infinity, minHeight: 40).background(Theme.raised).clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                        if r.recording {
+                            Button("Stop recording") { confirmStop = true }
+                                .buttonStyle(TintButton(color: Theme.orange))
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
             }
+            Section("You") {
+                link("Profile and body", "Name, weight, height, age, sex", settings.value.profileName, "person.fill", Theme.green) { ProfileBodyView() }
+                link("Heart rate zones", "Max and resting, for strain", "\(settings.value.maxHR) / \(settings.value.restingForZones)", "heart.fill", Theme.orange) { ZonesView() }
+            }
+            Section("What Zdravlje does") {
+                link("Notifications", "Battery, water, steps, wind-down", "\(notify.settings.onCount) on", "bell.fill", Theme.blue) { NotificationsView() }
+                link("Double-tap", "What a double-tap on the band does", "", "hand.tap.fill", Color(hex: 0xDDE5E0)) { DoubleTapView() }
+                link("Meals and water", "Goal, water, avoid list, food database", "", "fork.knife", Theme.green) { MealsSettingsView() }
+                link("Body log", "Blood pressure, and symptoms and cycle soon", body_.data.settings.anyOn ? "\(body_.data.settings.countOn) on" : "Off", "heart.text.square.fill", Color(hex: 0xC7A6E8)) { BodySettingsView() }
+                link("Steps", "The steps Shortcut and how to set it up", StepsLog.lastUpdate.map { "Ran \($0.formatted(date: .omitted, time: .shortened))" } ?? "", "figure.walk", Theme.green) { StepsSettingsView() }
+                link("AI", "Home server, what Claude can help with", ai.isSetUp ? "Set up" : "Not set up", "sparkle", Theme.blue) { AISettingsView() }
+            }
+            Section("Your data") {
+                link("Backup and restore", lastBackup > 0 ? "Last backup \(Date(timeIntervalSince1970: lastBackup).formatted(date: .abbreviated, time: .omitted))" : "No backup yet",
+                     "", "externaldrive.fill", Color(hex: 0xDDE5E0)) { BackupView() }
+                link("Import", "WHOOP history, OpenStrap export", "", "square.and.arrow.down.fill", Color(hex: 0xDDE5E0)) { ImportsView() }
+            }
+            Section("Help") {
+                link("About and troubleshooting", "Firmware, band link, history, recording reports, app signing", "", "info", Theme.line) { AboutView() }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle("Settings")
+        .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
+            Button("Stop", role: .destructive) { r.stop() }
+        } message: {
+            Text("Nothing is recorded until you start again.")
+        }
+    }
 
+    private func link<D: View>(_ title: String, _ note: String, _ value: String, _ icon: String, _ color: Color,
+                               @ViewBuilder destination: @escaping () -> D) -> some View {
+        NavigationLink(destination: destination) {
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.bg)
+                    .frame(width: 30, height: 30).background(color).clipShape(RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(note).font(.system(size: 13)).foregroundColor(Theme.dim)
+                }
+                Spacer()
+                if !value.isEmpty { Text(value).font(.system(size: 13)).foregroundColor(Theme.dim).lineLimit(1) }
+            }
+            .frame(minHeight: 44)
+        }
+    }
+}
+
+private func settingsRow(_ k: String, _ v: String) -> some View {
+    HStack {
+        Text(k).foregroundColor(Theme.dim)
+        Spacer()
+        Text(v).multilineTextAlignment(.trailing)
+    }
+}
+
+private extension View {
+    func settingsPage(_ title: String) -> some View {
+        self.scrollContentBackground(.hidden)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Band details
+
+struct BandDetailsView: View {
+    @ObservedObject private var r = Recorder.shared
+    @State private var confirmStop = false
+
+    var body: some View {
+        List {
             Section {
-                row("Battery", (r.battery.map { "\($0)%" } ?? "Unknown") + (r.charging == true ? ", charging" : ""))
-                row("Connection", r.recording ? r.status : "Not recording")
-                Stepper("Low battery warning at \(settings.value.lowBattery)%", value: $settings.value.lowBattery, in: 5...50, step: 5)
+                settingsRow("Battery", (r.battery.map { "\($0)%" } ?? "Unknown") + (r.charging == true ? ", charging" : ""))
+                settingsRow("Connection", r.recording ? r.status : "Not recording")
                 if r.recording {
                     Button("Stop recording", role: .destructive) { confirmStop = true }
                 } else if r.scanning {
@@ -79,32 +139,32 @@ struct SettingsView: View {
                 } else {
                     Button("Find my band and start recording") { r.startScan() }
                 }
-            } header: {
-                Text("Band")
             } footer: {
-                Text("Recording keeps going with the phone locked. Swiping the app away stops it.")
+                Text("Recording keeps going with the phone locked. Swiping the app away stops it. The low battery alert is in Notifications.")
             }
+        }
+        .settingsPage("Band")
+        .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
+            Button("Stop", role: .destructive) { r.stop() }
+        } message: {
+            Text("Nothing is recorded until you start again.")
+        }
+    }
+}
 
-            Section {
-                if showZoneInfo {
-                    Text("These two numbers set your five heart rate zones, which drive the zone bars and strain. Max is the highest your heart gets in an all-out effort. Resting is your usual low when relaxed. The defaults match your old WHOOP zones, so most people never change them.")
-                        .font(.footnote).foregroundColor(Theme.dim)
-                }
-                Stepper("Max heart rate: \(settings.value.maxHR)", value: $settings.value.maxHR, in: 140...220)
-                Stepper("Resting heart rate (for zones): \(settings.value.restingForZones)", value: $settings.value.restingForZones, in: 35...100)
-                row("Zones start at", settings.value.zoneBounds.map { "\($0)" }.joined(separator: ", "))
-            } header: {
-                HStack {
-                    Text("Heart rate zones")
-                    Spacer()
-                    Button { showZoneInfo.toggle() } label: {
-                        Image(systemName: showZoneInfo ? "info.circle.fill" : "info.circle").font(.system(size: 18))
-                    }
-                    .accessibilityLabel("What are these?")
-                }
-            }
+// MARK: - Profile and body
 
+struct ProfileBodyView: View {
+    @ObservedObject private var settings = SettingsStore.shared
+    @State private var weight = ""
+    @State private var feet = ""
+    @State private var inches = ""
+    @State private var age = ""
+
+    var body: some View {
+        List {
             Section {
+                labeled("Name") { TextField("Your name", text: $settings.value.profileName).multilineTextAlignment(.trailing) }
                 labeled("Weight") {
                     TextField("0", text: $weight).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 70)
                     Text("lb").foregroundColor(Theme.dim)
@@ -127,98 +187,11 @@ struct SettingsView: View {
                     Text("Male").tag(Bool?.some(false))
                 }
                 .pickerStyle(.segmented)
-            } header: {
-                Text("For calorie estimates")
             } footer: {
-                Text("Stays on this phone. Calories are estimates from heart rate.")
-            }
-
-            Section("The band") {
-                NavigationLink("Double-tap") { DoubleTapView() }
-                NavigationLink("Notifications") { NotificationsView() }
-                NavigationLink("AI") { AISettingsView() }
-            }
-            Section("Meals") {
-                NavigationLink("Goal, water, avoid list and food database") { MealsSettingsView() }
-            }
-            Section("Steps") {
-                row("Last update from Shortcut", StepsLog.lastUpdate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "None yet")
-                Button("How to set up the steps Shortcut") { showStepsHelp = true }
-            }
-
-            Section {
-                Button(busy ? "Working" : "Back up now") { backUp() }.disabled(busy)
-                Button("Restore from a backup") { showRestore = true }.disabled(busy)
-                NavigationLink("Import WHOOP history") { ImportView() }
-                NavigationLink("Import OpenStrap export") { OpenStrapImportView() }
-                if !backupStatus.isEmpty { Text(backupStatus).font(.footnote) }
-            } header: {
-                Text("Backup")
-            } footer: {
-                Text(lastBackup > 0 ? "Last backup: \(Date(timeIntervalSince1970: lastBackup).formatted(date: .abbreviated, time: .shortened)). Restoring only adds data." : "No backup yet. Restoring only adds data.")
-            }
-
-            Section {
-                row("Band firmware", r.firmware ?? (r.infoMissing ? "Not reported by the band" : "Read when the band connects"))
-                if let h = r.hardware { row("Band hardware", h) }
-                row("Band link", link.state.label)
-                if let offset = link.clockOffset {
-                    row("Band clock", abs(offset) <= 2 ? "In sync with phone" : "\(offset > 0 ? "Ahead" : "Behind") by \(abs(offset)) s")
-                }
-                row("WHOOP history", whoopSummary)
-                row("Band days (OpenStrap import)", bandSummary)
-                row("Band download", downloadSummary)
-                BandStepsRow()
-                row("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
-            } header: {
-                Text("About")
-            } footer: {
-                Text("Read straight from the band, without the WHOOP app. Band link is the band's own data channel; for now Zdravlje only checks that it answers. Heart rate still comes from the standard broadcast, which keeps working either way.")
-            }
-
-            if let expiry = Signing.expiry {
-                Section("App signing") {
-                    row(expiry > Date() ? "Re-sign by" : "Expired", expiry.formatted(date: .abbreviated, time: .shortened))
-                }
-            }
-
-            if !sessions.isEmpty {
-                Section("Recording report") {
-                    Picker("Recording", selection: Binding(get: { selected ?? "" }, set: { refresh($0) })) {
-                        ForEach(sessions, id: \.self) { Text(Report.title($0)).tag($0) }
-                    }
-                    Text(report).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
-                    Button(copied ? "Copied" : "Copy report") {
-                        UIPasteboard.general.string = report
-                        copied = true
-                    }
-                    if let id = selected { ShareLink("Save data file", item: Store.shared.samplesURL(id)) }
-                }
+                Text("Used for calorie estimates. Stays on this phone. Changes save automatically.")
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle("Settings")
-        .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
-            Button("Stop", role: .destructive) {
-                let id = r.activeSession
-                r.stop()
-                refresh(id)
-            }
-        } message: {
-            Text("Nothing is recorded until you start again.")
-        }
-        .sheet(isPresented: $showStepsHelp) { StepsHelp() }
-        .fileImporter(isPresented: $showRestore, allowedContentTypes: [.data]) { restore($0) }
-        .fileMover(isPresented: $showSave, file: backupFile) { result in
-            switch result {
-            case .success:
-                lastBackup = Date().timeIntervalSince1970
-                backupStatus = "Backup saved and checked."
-            case .failure(let error):
-                backupStatus = "Backup was not saved: \(error.localizedDescription)"
-            }
-        }
+        .settingsPage("Profile and body")
         .onAppear {
             weight = settings.value.weightKg.map { String(Int(($0 / 0.45359237).rounded())) } ?? ""
             if let cm = settings.value.heightCm {
@@ -227,7 +200,6 @@ struct SettingsView: View {
                 inches = String(total % 12)
             }
             age = settings.value.age.map { "\($0)" } ?? ""
-            refresh(nil)
         }
     }
 
@@ -244,14 +216,97 @@ struct SettingsView: View {
         let i = Int(inches) ?? 0
         settings.value.heightCm = (f > 0 || i > 0) ? Double(f * 12 + i) * 2.54 : nil
     }
+}
 
-    private func row(_ k: String, _ v: String) -> some View {
-        HStack {
-            Text(k).foregroundColor(Theme.dim)
-            Spacer()
-            Text(v)
+// MARK: - Heart rate zones
+
+struct ZonesView: View {
+    @ObservedObject private var settings = SettingsStore.shared
+
+    var body: some View {
+        List {
+            Section {
+                Stepper("Max heart rate: \(settings.value.maxHR)", value: $settings.value.maxHR, in: 140...220)
+                Stepper("Resting heart rate (for zones): \(settings.value.restingForZones)", value: $settings.value.restingForZones, in: 35...100)
+                settingsRow("Zones start at", settings.value.zoneBounds.map { "\($0)" }.joined(separator: ", "))
+            } footer: {
+                Text("These two numbers set your five heart rate zones, which drive the zone bars and strain. Max is the highest your heart gets in an all-out effort. Resting is your usual low when relaxed. The defaults match your old WHOOP zones, so most people never change them.")
+            }
+        }
+        .settingsPage("Heart rate zones")
+    }
+}
+
+// MARK: - Steps
+
+struct StepsSettingsView: View {
+    @State private var showHelp = false
+
+    var body: some View {
+        List {
+            Section {
+                settingsRow("Last update from Shortcut", StepsLog.lastUpdate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "None yet")
+                Button("How to set up the steps Shortcut") { showHelp = true }
+            } footer: {
+                Text("The daily steps goal is in Notifications, next to the steps goal alert.")
+            }
+        }
+        .settingsPage("Steps")
+        .sheet(isPresented: $showHelp) { StepsHelp() }
+    }
+}
+
+// MARK: - Import
+
+struct ImportsView: View {
+    var body: some View {
+        List {
+            Section {
+                NavigationLink("Import WHOOP history") { ImportView() }
+                NavigationLink("Import OpenStrap export") { OpenStrapImportView() }
+            } footer: {
+                Text("Imports only add days you don't already have.")
+            }
+        }
+        .settingsPage("Import")
+    }
+}
+
+// MARK: - Backup and restore
+
+struct BackupView: View {
+    @ObservedObject private var r = Recorder.shared
+    @State private var backupFile: URL?
+    @State private var showSave = false
+    @State private var showRestore = false
+    @State private var busy = false
+    @State private var backupStatus = ""
+    @AppStorage("lastBackup") private var lastBackup = 0.0
+
+    var body: some View {
+        List {
+            Section {
+                Button(busy ? "Working" : "Back up now") { backUp() }.disabled(busy)
+                Button("Restore from a backup") { showRestore = true }.disabled(busy)
+                if !backupStatus.isEmpty { Text(backupStatus).font(.footnote) }
+            } footer: {
+                Text(lastBackup > 0 ? "Last backup: \(Date(timeIntervalSince1970: lastBackup).formatted(date: .abbreviated, time: .shortened)). Restoring only adds data." : "No backup yet. Restoring only adds data.")
+            }
+        }
+        .settingsPage("Backup and restore")
+        .fileImporter(isPresented: $showRestore, allowedContentTypes: [.data]) { restore($0) }
+        .fileMover(isPresented: $showSave, file: backupFile) { result in
+            switch result {
+            case .success:
+                lastBackup = Date().timeIntervalSince1970
+                backupStatus = "Backup saved and checked."
+            case .failure(let error):
+                backupStatus = "Backup was not saved: \(error.localizedDescription)"
+            }
         }
     }
+
+    private func refresh(_ pick: String?) {}
 
     private func backUp() {
         busy = true
@@ -301,6 +356,12 @@ struct SettingsView: View {
                 WaterStore.shared.reload()
                 NotifyStore.shared.reload()
                 AIStore.shared.reload()
+                if result.deferred.contains(BodyStore.fileName), let b = try BackupArchive.extract(url, name: BodyStore.fileName),
+                   let other = try? JSONDecoder().decode(BodyData.self, from: b) {
+                    DispatchQueue.main.async { BodyStore.shared.change { _ = $0.merge(other) } }
+                } else {
+                    BodyStore.shared.reload()
+                }
                 if result.deferred.contains(BandHistoryStore.fileName), let b = try BackupArchive.extract(url, name: BandHistoryStore.fileName) {
                     BandHistoryStore.shared.merge(json: b)
                 } else {
@@ -327,6 +388,81 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+}
+
+// MARK: - About and troubleshooting
+
+struct AboutView: View {
+    @ObservedObject private var r = Recorder.shared
+    @ObservedObject private var link = BandLink.shared
+    @ObservedObject private var capture = BandCapture.shared
+    @State private var sessions: [String] = []
+    @State private var report = ""
+    @State private var selected: String?
+    @State private var copied = false
+
+    /// Shows what the imports put on this phone.
+    private var whoopSummary: String {
+        let days = HistoryStore.shared.days.values
+        let b = days.filter { $0.respRate != nil }.count
+        return days.isEmpty ? "None" : "\(days.count) days, \(b) with breathing rate"
+    }
+
+    /// Phase 1: what Zdravlje has heard of the band's history.
+    private var downloadSummary: String {
+        let nights = BandHistoryStore.shared.own.count
+        guard let last = capture.lastData else {
+            return nights == 0 ? "Listening, nothing yet" : "\(nights) night\(nights == 1 ? "" : "s") staged"
+        }
+        let when = Calendar.current.isDateInToday(last) ? last.formatted(date: .omitted, time: .shortened) : last.formatted(date: .abbreviated, time: .shortened)
+        return "Last data \(when), \(nights) night\(nights == 1 ? "" : "s") staged"
+    }
+
+    private var bandSummary: String {
+        let days = BandHistoryStore.shared.imported.values
+        let st = days.filter { !($0.stages ?? []).isEmpty }.count
+        return days.isEmpty ? "None" : "\(days.count) days, \(st) with sleep stages"
+    }
+
+
+    var body: some View {
+        List {
+            Section {
+                settingsRow("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
+                if let expiry = Signing.expiry {
+                    settingsRow(expiry > Date() ? "Re-sign by" : "Signing expired", expiry.formatted(date: .abbreviated, time: .shortened))
+                }
+                settingsRow("Band firmware", r.firmware ?? (r.infoMissing ? "Not reported by the band" : "Read when the band connects"))
+                if let h = r.hardware { settingsRow("Band hardware", h) }
+                settingsRow("Band link", link.state.label)
+                if let offset = link.clockOffset {
+                    settingsRow("Band clock", abs(offset) <= 2 ? "In sync with phone" : "\(offset > 0 ? "Ahead" : "Behind") by \(abs(offset)) s")
+                }
+                settingsRow("Band download", downloadSummary)
+                BandStepsRow()
+                settingsRow("WHOOP history", whoopSummary)
+                settingsRow("Band days (OpenStrap import)", bandSummary)
+            } footer: {
+                Text("Read straight from the band, without the WHOOP app. Heart rate comes from the standard broadcast, which keeps working either way.")
+            }
+            if !sessions.isEmpty {
+                Section("Recording report") {
+                    Picker("Recording", selection: Binding(get: { selected ?? "" }, set: { refresh($0) })) {
+                        ForEach(sessions, id: \.self) { Text(Report.title($0)).tag($0) }
+                    }
+                    Text(report).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                    Button(copied ? "Copied" : "Copy report") {
+                        UIPasteboard.general.string = report
+                        copied = true
+                    }
+                    if let id = selected { ShareLink("Save data file", item: Store.shared.samplesURL(id)) }
+                }
+            }
+        }
+        .settingsPage("About and troubleshooting")
+        .onAppear { refresh(nil) }
     }
 
     private func refresh(_ pick: String?) {

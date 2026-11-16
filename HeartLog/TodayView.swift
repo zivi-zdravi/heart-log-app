@@ -69,6 +69,7 @@ struct TodayView: View {
                     ForEach(summary.suggestions, id: \.self) { suggestion($0) }
                     tiles
                     AlarmTile()
+                    BodyLogCard()
                     dayActivities
                     if record?.isWhoop == true && !summary.hasData {
                         Text("From your WHOOP history.").font(.system(size: 13)).foregroundColor(Theme.dim)
@@ -161,7 +162,7 @@ struct TodayView: View {
     }
 
     @ViewBuilder private var alerts: some View {
-        if rec.charging != true, let b = rec.battery, b <= settings.value.lowBattery {
+        if rec.charging != true, let b = rec.battery, b <= NotifyStore.shared.settings.lowBatteryAt {
             Card { Text("Band battery is at \(b)%. Charge it soon.").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.orange) }
         }
         if let expiry = Signing.expiry, expiry.timeIntervalSinceNow < 2 * 86_400 {
@@ -217,7 +218,7 @@ struct TodayView: View {
     private var batteryColor: Color {
         if rec.charging == true { return Theme.green }
         guard let b = rec.battery else { return Theme.dim }
-        return b <= settings.value.lowBattery ? Theme.orange : Theme.green
+        return b <= NotifyStore.shared.settings.lowBatteryAt ? Theme.orange : Theme.green
     }
 
     private var strainValue: Double? { record?.strain ?? (summary.hasData ? summary.strain : nil) }
