@@ -157,7 +157,7 @@ struct BPView: View {
                     field("Bottom (diastolic)", $diastolic, 1)
                     field("Pulse (optional)", $pulse, 2)
                     DatePicker("Time", selection: $time, in: ...Date()).font(.system(size: 15)).foregroundColor(Theme.text)
-                    FlowChips(items: BodyMath.bpTags, selected: $tags)
+                    ToggleChips(items: BodyMath.bpTags, selected: $tags)
                     if showNote {
                         TextField("Note", text: $note).textFieldStyle(.roundedBorder)
                     } else {
@@ -275,7 +275,7 @@ struct BPView: View {
 }
 
 /// Tappable chips that wrap onto more lines.
-struct FlowChips: View {
+struct ToggleChips: View {
     let items: [String]
     @Binding var selected: Set<String>
 
