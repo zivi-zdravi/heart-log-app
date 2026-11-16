@@ -157,11 +157,12 @@ async function meal(who, { text, image, mediaType, note, avoid }) {
   if (Array.isArray(avoid) && avoid.length) prompt += `\nFoods they avoid (just name them if present): ${avoid.slice(0, 40).join(', ')}`;
   content.push({ type: 'text', text: prompt });
   const j = await claude({
-    model, max_tokens: 1500, system: MEAL_SYSTEM,
+    model, max_tokens: 4000, system: MEAL_SYSTEM,
     tools: [MEAL_TOOL], tool_choice: { type: 'tool', name: 'record_meal' },
     messages: [{ role: 'user', content }],
   });
   record(who, model, j.usage);
+  if (j.stop_reason === 'max_tokens') throw Object.assign(new Error('That meal was too long to read in one go. Try splitting it in two.'), { status: 502 });
   const out = j.content?.find(c => c.type === 'tool_use')?.input;
   if (!out) throw Object.assign(new Error('No result from Claude'), { status: 502 });
   return tidyMeal(out);
@@ -176,9 +177,10 @@ async function ask(who, { question, context, history }) {
   }
   const ctx = JSON.stringify(context ?? {}).slice(0, 120_000);
   messages.push({ role: 'user', content: `My data:\n${ctx}\n\nMy question: ${String(question || '').slice(0, 1000)}` });
-  const j = await claude({ model: MODEL_ASK, max_tokens: 1200, system: ASK_SYSTEM, messages });
+  const j = await claude({ model: MODEL_ASK, max_tokens: 4000, system: ASK_SYSTEM, messages });
   record(who, MODEL_ASK, j.usage);
-  const answer = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+  let answer = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+  if (answer && j.stop_reason === 'max_tokens') answer += '\n\n(Answer cut short. Ask for less at once, or ask it to continue.)';
   if (!answer) {
     console.error(new Date().toISOString(), 'empty answer, stop_reason', j.stop_reason, 'blocks', (j.content || []).map(c => c.type).join(','));
     throw Object.assign(new Error('Claude sent back an empty answer. Try asking again.'), { status: 502 });
