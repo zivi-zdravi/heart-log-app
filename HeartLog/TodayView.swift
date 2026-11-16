@@ -280,6 +280,20 @@ struct TodayView: View {
         }
     }
 
+    private func suggestion(_ span: Metrics.Span) -> some View {
+        Card {
+            Text("Looks like an activity, \(Theme.clock(span.start)) to \(Theme.clock(span.end))")
+                .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            HStack(spacing: 10) {
+                Button("Save it") { acts.add(type: "Activity", start: span.start, end: span.end) }
+                    .buttonStyle(TintButton(color: Theme.green))
+                Button("Not an activity") { acts.add(type: "Dismissed", start: span.start, end: span.end, dismissed: true) }
+                    .buttonStyle(TintButton(color: Theme.text))
+            }
+            .padding(.top, 2)
+        }
+    }
+
     private var tiles: some View {
         let r = record
         let hrv = r?.hrv ?? summary.hrv
