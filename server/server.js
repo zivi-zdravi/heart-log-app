@@ -145,7 +145,7 @@ async function meal(who, { text, image, mediaType, note, avoid }) {
   return out;
 }
 
-const ASK_SYSTEM = `You help one person understand their own data from a personal health tracker app (sleep, recovery, heart rate, HRV, activity, meals, water). You get their question and daily summaries as JSON. Answer from those numbers: be specific, quote the relevant figures, say how many days the answer rests on, and say plainly when the sample is small or another factor could explain a pattern. If the data cannot answer the question, say what is missing. Keep it short: a few sentences, plus a small table only when comparing groups. This is general information, not medical advice; if something looks like a health concern, suggest they talk to a doctor. ${STYLE}`;
+const ASK_SYSTEM = `You help one person understand their own data from a personal health tracker app (sleep, recovery, heart rate, HRV, activity, meals, water). You get their question and daily summaries as JSON. Answer from those numbers: be specific, quote the relevant figures, say how many days the answer rests on, and say plainly when the sample is small or another factor could explain a pattern. If the data cannot answer the question, say what is missing. Keep it short: a few sentences or a short list. Use plain text with simple "-" bullets and **bold** at most; no tables, headings or code blocks (the app shows plain text). This is general information, not medical advice; if something looks like a health concern, suggest they talk to a doctor. ${STYLE}`;
 
 async function ask(who, { question, context, history }) {
   const messages = [];
@@ -156,7 +156,12 @@ async function ask(who, { question, context, history }) {
   messages.push({ role: 'user', content: `My data:\n${ctx}\n\nMy question: ${String(question || '').slice(0, 1000)}` });
   const j = await claude({ model: MODEL_ASK, max_tokens: 1200, system: ASK_SYSTEM, messages });
   record(who, MODEL_ASK, j.usage);
-  return { answer: (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim() };
+  const answer = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+  if (!answer) {
+    console.error(new Date().toISOString(), 'empty answer, stop_reason', j.stop_reason, 'blocks', (j.content || []).map(c => c.type).join(','));
+    throw Object.assign(new Error('Claude sent back an empty answer. Try asking again.'), { status: 502 });
+  }
+  return { answer };
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────

@@ -498,7 +498,7 @@ struct AskView: View {
     private func bubble(_ role: String, _ text: String) -> some View {
         HStack {
             if role == "user" { Spacer(minLength: 40) }
-            Text(LocalizedStringKey(text))
+            answerText(text)
                 .font(.system(size: 15)).foregroundColor(Theme.text)
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(role == "user" ? Color(hex: 0x26394A) : Theme.card)
@@ -506,6 +506,15 @@ struct AskView: View {
                 .textSelection(.enabled)
             if role != "user" { Spacer(minLength: 20) }
         }
+    }
+
+    /// Bold and italics from Claude's markdown; everything else as plain text.
+    /// (Not LocalizedStringKey: a "%" in an answer, like "62%", would be read
+    /// as a format code and can blank the whole bubble.)
+    private func answerText(_ s: String) -> Text {
+        let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        if let a = try? AttributedString(markdown: s, options: opts) { return Text(a) }
+        return Text(verbatim: s)
     }
 
     private func ask(_ q: String) async {
@@ -522,6 +531,7 @@ struct AskView: View {
         sent = ctx.description
         do {
             let a = try await AIClient.ask(question: q, context: ctx.json, history: history)
+            guard !a.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIClient.Failure.server("Claude sent back an empty answer. Try asking again.") }
             turns.append((role: "assistant", text: a))
         } catch {
             problem = error.localizedDescription
