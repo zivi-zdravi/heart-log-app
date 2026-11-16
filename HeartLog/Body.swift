@@ -114,9 +114,15 @@ enum BodyMath {
         guard times.count >= 5 else { return nil }
         var hours = [Int](repeating: 0, count: 24)
         for t in times { hours[calendar.component(.hour, from: Date(timeIntervalSince1970: Double(t) / 1000))] += 1 }
-        let best = (0..<24).max { a, b in
-            (hours[a] + hours[(a + 1) % 24] + hours[(a + 2) % 24]) < (hours[b] + hours[(b + 1) % 24] + hours[(b + 2) % 24])
-        } ?? 0
+        var best = 0
+        var bestCount = -1
+        for h in 0..<24 {
+            let n: Int = hours[h] + hours[(h + 1) % 24] + hours[(h + 2) % 24]
+            if n > bestCount {
+                best = h
+                bestCount = n
+            }
+        }
         return best
     }
 
