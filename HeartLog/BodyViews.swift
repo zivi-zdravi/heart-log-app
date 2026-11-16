@@ -63,6 +63,14 @@ struct BodyLogCard: View {
                         }
                         .font(.system(size: 14))
                     }
+                    if store.data.settings.cycle {
+                        HStack {
+                            Text("Cycle").foregroundColor(Theme.dim)
+                            Spacer()
+                            Text(CycleSummary.line(store.data)).foregroundColor(Theme.text).lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                        .font(.system(size: 14))
+                    }
                     if store.data.settings.menopause, let line = SymptomSummary.todayLine(store.data) {
                         HStack {
                             Text("Symptoms").foregroundColor(Theme.dim)
@@ -97,6 +105,12 @@ struct BodyLogView: View {
                     NavigationLink { BPView() } label: {
                         entry(icon: "heart.text.square", color: Theme.orange, title: "Blood pressure",
                               note: store.data.bp.first.map { "Last: \(BodyMath.text($0)), \(Theme.clock($0.time))" } ?? "No readings yet")
+                    }
+                    .buttonStyle(.plain)
+                }
+                if store.data.settings.cycle {
+                    NavigationLink { CycleView() } label: {
+                        entry(icon: "drop.fill", color: Color(hex: 0xF2A7B8), title: "Cycle", note: CycleSummary.line(store.data))
                     }
                     .buttonStyle(.plain)
                 }
@@ -330,9 +344,22 @@ struct BodySettingsView: View {
         Form {
             Section {
                 Toggle(isOn: binding(\.bloodPressure)) { row("Blood pressure", "Readings you enter by hand") }
+                Toggle(isOn: binding(\.cycle)) { row("Cycle", "Period, flow, symptoms and predictions") }
                 Toggle(isOn: binding(\.menopause)) { row("Menopause symptoms", "Hot flashes, night sweats and more") }
             } footer: {
-                Text("Turn on only what you want to track. Anything turned off disappears from Today and the Body log screen; what you already logged is kept. Cycle tracking comes next.")
+                Text("Turn on only what you want to track. Anything turned off disappears from Today and the Body log screen; what you already logged is kept.")
+            }
+            if store.settings.cycle {
+                Section {
+                    ToggleChips(items: CycleMath.allSymptoms, selected: Binding(
+                        get: { Set(store.settings.cycleSymptoms) },
+                        set: { v in var st = store.settings; st.cycleSymptoms = CycleMath.allSymptoms.filter { v.contains($0) }; store.settings = st }))
+                        .padding(.vertical, 6)
+                } header: {
+                    Text("Cycle symptoms to show")
+                } footer: {
+                    Text("Hidden ones stay under More on the Cycle screen.")
+                }
             }
             if store.settings.menopause {
                 Section {
@@ -662,5 +689,218 @@ struct SymptomsView: View {
             return c
         }.value
         compare = result
+    }
+}
+
+// MARK: - Cycle
+
+enum CycleSummary {
+    static func line(_ data: BodyData) -> String {
+        let cal = Calendar.current
+        guard let p = CycleMath.predict(data.flow, today: Date(), cal) else { return "Log your period to start" }
+        let today = cal.startOfDay(for: Date())
+        let toFrom = CycleMath.days(today, p.nextFrom, cal)
+        let toTo = CycleMath.days(today, p.nextTo, cal)
+        if (data.flow[CycleMath.key(today, cal)] ?? 0) >= 2 { return "Day \(p.cycleDay), period" }
+        if toFrom > 0 { return "Day \(p.cycleDay), period in ~\(toFrom) days" }
+        if toTo >= 0 { return "Day \(p.cycleDay), period likely soon" }
+        return "Day \(p.cycleDay)"
+    }
+}
+
+private let cyclePink = Color(hex: 0xF2A7B8)
+
+struct CycleView: View {
+    @ObservedObject private var store = BodyStore.shared
+    @State private var month = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
+    @State private var selected = Calendar.current.startOfDay(for: Date())
+    @State private var showMore = false
+    @State private var recoveryNote: String?
+
+    private var cal: Calendar { .current }
+    private var prediction: CycleMath.Prediction? { CycleMath.predict(store.data.flow, today: Date(), cal) }
+    private var selectedKey: String { CycleMath.key(selected, cal) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Cycle").font(Theme.display(30)).foregroundColor(Theme.text)
+                summaryCard
+                calendarCard
+                dayCard
+                patternsCard
+                Text("Predictions are estimates from your own logs, not birth control. Each person picks which symptoms show; hidden ones stay under More.")
+                    .font(.system(size: 12)).foregroundColor(Theme.dim)
+            }
+            .padding(20)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadRecovery() }
+    }
+
+    @ViewBuilder private var summaryCard: some View {
+        Card {
+            if let p = prediction {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Day \(p.cycleDay)").font(Theme.display(40)).foregroundColor(Theme.text)
+                    Spacer()
+                    Text(p.fromHistory ? "your cycles: \(p.shortest) to \(p.longest) days" : "a typical cycle, for now")
+                        .font(.system(size: 13)).foregroundColor(Theme.dim)
+                }
+                Text("Next period likely \(short(p.nextFrom)) to \(short(p.nextTo)).").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                Text(p.fromHistory ? "A range, from your last \(min(6, CycleMath.lengths(CycleMath.starts(store.data.flow, cal), cal).count)) cycles."
+                     : "Gets more accurate once you've logged 3 cycles.")
+                    .font(.system(size: 13)).foregroundColor(Color(hex: 0xC9D3CE))
+            } else {
+                Text("Log the first day of your period below and Zdravlje will start counting.").font(.system(size: 15)).foregroundColor(Theme.text)
+            }
+        }
+    }
+
+    private func short(_ d: Date) -> String { d.formatted(.dateTime.month(.abbreviated).day()) }
+
+    private var calendarCard: some View {
+        let weekdays = cal.veryShortWeekdaySymbols
+        let first = cal.firstWeekday - 1
+        let ordered = Array(weekdays[first...] + weekdays[..<first])
+        let range = cal.range(of: .day, in: .month, for: month) ?? 1..<31
+        let offset = (cal.component(.weekday, from: month) - cal.firstWeekday + 7) % 7
+        let cells: [Date?] = Array(repeating: nil, count: offset) + range.compactMap { cal.date(byAdding: .day, value: $0 - 1, to: month) }
+        return Card {
+            HStack {
+                Text(month.formatted(.dateTime.month(.wide).year())).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                Spacer()
+                Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left").frame(width: 40, height: 40) }
+                    .accessibilityLabel("Previous month")
+                Button { shiftMonth(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 40) }
+                    .accessibilityLabel("Next month")
+            }
+            .foregroundColor(Theme.text)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 6) {
+                ForEach(Array(ordered.enumerated()), id: \.offset) { _, w in
+                    Text(w).font(.system(size: 12)).foregroundColor(Theme.dim)
+                }
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, d in
+                    if let d { dayCell(d) } else { Color.clear.frame(height: 38) }
+                }
+            }
+            Text("Filled: period days you logged. Dashed: likely next period.").font(.system(size: 12)).foregroundColor(Theme.dim)
+        }
+    }
+
+    private func shiftMonth(_ by: Int) {
+        if let m = cal.date(byAdding: .month, value: by, to: month) { month = m }
+    }
+
+    private func dayCell(_ d: Date) -> some View {
+        let k = CycleMath.key(d, cal)
+        let f = store.data.flow[k] ?? 0
+        let predicted = prediction.map { d >= $0.nextFrom && d <= $0.nextTo } ?? false
+        let isSel = cal.isDate(d, inSameDayAs: selected)
+        let future = d > Date()
+        return Button { if !future { selected = cal.startOfDay(for: d) } } label: {
+            Text("\(cal.component(.day, from: d))")
+                .font(.system(size: 14, weight: isSel ? .bold : .regular))
+                .foregroundColor(f >= 2 ? Theme.bg : future && !predicted ? Theme.dim : Theme.text)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(f >= 2 ? cyclePink : f == 1 ? cyclePink.opacity(0.3) : Color.clear))
+                .overlay(Circle().stroke(cyclePink, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])).opacity(predicted && f < 2 ? 1 : 0))
+                .overlay(Circle().stroke(Theme.text, lineWidth: 1.5).opacity(isSel ? 1 : 0).padding(-2))
+        }
+        .buttonStyle(.plain)
+        .frame(height: 38)
+        .accessibilityLabel("\(d.formatted(date: .abbreviated, time: .omitted))\(f > 0 ? ", \(CycleMath.flowNames[f])" : "")\(predicted ? ", likely period" : "")")
+    }
+
+    private var dayCard: some View {
+        let f = store.data.flow[selectedKey] ?? 0
+        let notes = Set(store.data.cycleNotes[selectedKey] ?? [])
+        let shown = store.data.settings.cycleSymptoms
+        let hidden = CycleMath.allSymptoms.filter { !shown.contains($0) }
+        return Card {
+            Text(cal.isDateInToday(selected) ? "Today" : selected.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            Text("Period").font(.system(size: 13)).foregroundColor(Theme.dim)
+            HStack(spacing: 4) {
+                ForEach(0..<5, id: \.self) { i in
+                    Button {
+                        let k = selectedKey
+                        store.change { $0.flow[k] = i == 0 ? nil : i }
+                    } label: {
+                        Text(CycleMath.flowNames[i]).font(.system(size: 13, weight: f == i ? .semibold : .regular))
+                            .foregroundColor(f == i ? Theme.bg : Theme.text)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(f == i ? cyclePink : Theme.raised)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(f == i ? .isSelected : [])
+                }
+            }
+            Text("Symptoms").font(.system(size: 13)).foregroundColor(Theme.dim).padding(.top, 4)
+            ToggleChips(items: shown + (showMore ? hidden : []), selected: Binding(
+                get: { notes },
+                set: { v in
+                    let k = selectedKey
+                    let list = CycleMath.allSymptoms.filter { v.contains($0) }
+                    store.change { $0.cycleNotes[k] = list.isEmpty ? nil : list }
+                }))
+            if !hidden.isEmpty {
+                Button(showMore ? "Fewer" : "More") { showMore.toggle() }
+                    .font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.blue).frame(minHeight: 36)
+            }
+        }
+    }
+
+    private var patternsCard: some View {
+        let st = CycleMath.starts(store.data.flow, cal)
+        let before = CycleMath.beforePeriod(store.data.cycleNotes, starts: st, cal)
+        return Card {
+            Text("Patterns").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+            if st.count < 3 {
+                Text("Appears once there are 3 logged cycles.").font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+            } else {
+                if !before.isEmpty {
+                    Text("\(listText(before)) show\(before.count == 1 ? "s" : "") up in the 5 days before your period in most of your recent cycles.")
+                        .font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+                }
+                if let r = recoveryNote { Text(r).font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE)) }
+                if before.isEmpty && recoveryNote == nil {
+                    Text("Nothing stands out yet.").font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+                }
+            }
+        }
+    }
+
+    private func listText(_ v: [String]) -> String {
+        let l = v.map { $0.lowercased() }
+        let joined = l.count <= 1 ? l.joined() : l.dropLast().joined(separator: ", ") + " and " + l.last!
+        return joined.prefix(1).uppercased() + joined.dropFirst()
+    }
+
+    /// Recovery in the 3 days before a period against other days, over the last 90 days.
+    private func loadRecovery() async {
+        let st = CycleMath.starts(store.data.flow, cal)
+        guard st.count >= 3 else { return }
+        let settings = SettingsStore.shared.value
+        let note = await Task.detached(priority: .userInitiated) { () -> String? in
+            let cal = Calendar.current
+            let today = cal.startOfDay(for: Date())
+            var pre: Set<String> = []
+            for s in st { for i in 1...3 { if let d = cal.date(byAdding: .day, value: -i, to: s) { pre.insert(CycleMath.key(d, cal)) } } }
+            var a: [Double] = [], b: [Double] = []
+            for i in 0..<90 {
+                guard let d = cal.date(byAdding: .day, value: -i, to: today),
+                      let r = DayEngine.shared.record(d, settings: settings)?.recovery else { continue }
+                if pre.contains(CycleMath.key(d, cal)) { a.append(r) } else { b.append(r) }
+            }
+            guard a.count >= 5, b.count >= 10, let ma = TrendMath.mean(a), let mb = TrendMath.mean(b) else { return nil }
+            let diff = Int((mb - ma).rounded())
+            if diff >= 5 { return "Recovery runs about \(diff) points lower in the 3 days before your period." }
+            if diff <= -5 { return "Recovery runs about \(-diff) points higher in the 3 days before your period." }
+            return nil
+        }.value
+        recoveryNote = note
     }
 }

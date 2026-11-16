@@ -580,6 +580,8 @@ enum AskContext {
         let water = WaterStore.shared.data
         let bodyData = BodyStore.shared.data
         let shareBP = bodyData.settings.includeInAsk && bodyData.settings.bloodPressure && !bodyData.bp.isEmpty
+        let shareCycle = bodyData.settings.includeInAsk && bodyData.settings.cycle && !bodyData.flow.isEmpty
+        let cycleStarts = shareCycle ? CycleMath.starts(bodyData.flow, cal) : []
         let shareSymptoms = bodyData.settings.includeInAsk && bodyData.settings.menopause
             && (!bodyData.events.isEmpty || !bodyData.ratings.isEmpty)
         let bands = BandHistoryStore.shared.days
@@ -630,6 +632,11 @@ enum AskContext {
                     }
                 if !readings.isEmpty { d["blood_pressure"] = readings }
             }
+            if shareCycle, let date = dayParser.date(from: r.day) {
+                if let f = bodyData.flow[r.day], f > 0 { d["period_flow"] = CycleMath.flowNames[f].lowercased() }
+                if let last = cycleStarts.last(where: { $0 <= date }) { d["cycle_day"] = CycleMath.days(last, date, cal) + 1 }
+                if let n = bodyData.cycleNotes[r.day], !n.isEmpty { d["cycle_symptoms"] = n.map { $0.lowercased() } }
+            }
             if shareSymptoms {
                 var sym: [String: Any] = [:]
                 for name in BodyMath.counted {
@@ -647,7 +654,7 @@ enum AskContext {
             rows.append(d.compactMapValues { $0 is NSNull ? nil : $0 })
         }
         let json: [String: Any] = ["days": rows, "note": "One row per day, keyed by the date the person woke up. Missing fields were not measured."]
-        let desc = "Your question, plus daily summaries for \(rows.count) days: recovery, sleep score and times, sleep stages where known, HRV, resting heart rate, breathing rate, strain, calories, meal times and water\(shareBP ? ", blood pressure readings" : "")\(shareSymptoms ? ", symptoms you logged" : ""). No names, no raw heart data, no photos."
+        let desc = "Your question, plus daily summaries for \(rows.count) days: recovery, sleep score and times, sleep stages where known, HRV, resting heart rate, breathing rate, strain, calories, meal times and water\(shareBP ? ", blood pressure readings" : "")\(shareCycle ? ", cycle days and period flow" : "")\(shareSymptoms ? ", symptoms you logged" : ""). No names, no raw heart data, no photos."
         return (json, desc)
     }
 }

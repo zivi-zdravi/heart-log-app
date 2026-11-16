@@ -78,4 +78,37 @@ final class BodyTests: XCTestCase {
         XCTAssertEqual(d.events.map(\.id), ["b", "a"])
         XCTAssertEqual(d.ratings["2026-11-15"]?["Mood"], 2)
     }
+
+    func testCycle() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        func d(_ m: Int, _ day: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: m, day: day))! }
+        func k(_ m: Int, _ day: Int) -> String { CycleMath.key(d(m, day), cal) }
+        var flow: [String: Int] = [:]
+        // Periods starting Jul 1, Jul 29, Aug 28, Sep 25, Oct 24 (28, 30, 28, 29 days), each 4 days long.
+        for (m, day) in [(7, 1), (7, 29), (8, 28), (9, 25), (10, 24)] {
+            for i in 0..<4 { flow[CycleMath.key(cal.date(byAdding: .day, value: i, to: d(m, day))!, cal)] = i == 3 ? 1 : 3 }
+        }
+        flow[k(10, 10)] = 1 // spotting mid-cycle doesn't start a period
+        let st = CycleMath.starts(flow, cal)
+        XCTAssertEqual(st, [d(7, 1), d(7, 29), d(8, 28), d(9, 25), d(10, 24)])
+        XCTAssertEqual(CycleMath.lengths(st, cal), [28, 30, 28, 29])
+        let p = CycleMath.predict(flow, today: d(11, 9), cal)!
+        XCTAssertEqual(p.cycleDay, 17)
+        XCTAssertEqual(p.shortest, 28)
+        XCTAssertEqual(p.longest, 30)
+        XCTAssertEqual(p.nextFrom, d(11, 21))
+        XCTAssertEqual(p.nextTo, d(11, 23))
+        XCTAssertTrue(p.fromHistory)
+
+        // One period only: assumes a typical cycle.
+        let one = CycleMath.predict([k(11, 1): 3], today: d(11, 9), cal)!
+        XCTAssertFalse(one.fromHistory)
+        XCTAssertEqual(one.cycleDay, 9)
+
+        var notes: [String: [String]] = [:]
+        for s in st.suffix(4) { notes[CycleMath.key(cal.date(byAdding: .day, value: -3, to: s)!, cal)] = ["Bloating"] }
+        notes[k(10, 1)] = ["Cramps"]
+        XCTAssertEqual(CycleMath.beforePeriod(notes, starts: st, cal), ["Bloating"])
+    }
 }

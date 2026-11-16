@@ -17,6 +17,7 @@ struct BodySettings: Codable, Equatable {
     var cycle = false
     var menopause = false
     var symptoms: [String] = BodyMath.defaultSymptoms
+    var cycleSymptoms: [String] = CycleMath.defaultSymptoms
     var includeInAsk = true
 
     init() {}
@@ -28,6 +29,7 @@ struct BodySettings: Codable, Equatable {
         cycle = try c.decodeIfPresent(Bool.self, forKey: .cycle) ?? d.cycle
         menopause = try c.decodeIfPresent(Bool.self, forKey: .menopause) ?? d.menopause
         symptoms = try c.decodeIfPresent([String].self, forKey: .symptoms) ?? d.symptoms
+        cycleSymptoms = try c.decodeIfPresent([String].self, forKey: .cycleSymptoms) ?? d.cycleSymptoms
         includeInAsk = try c.decodeIfPresent(Bool.self, forKey: .includeInAsk) ?? d.includeInAsk
     }
 
@@ -49,6 +51,10 @@ struct BodyData: Codable, Equatable {
     var events: [SymptomEvent] = []
     /// How bad a symptom was on a day, 0 to 3. Keyed by day ("2026-11-16"), then symptom.
     var ratings: [String: [String: Int]] = [:]
+    /// Flow by day: 0 none, 1 spotting, 2 light, 3 medium, 4 heavy.
+    var flow: [String: Int] = [:]
+    /// Cycle symptoms by day.
+    var cycleNotes: [String: [String]] = [:]
 
     init() {}
 
@@ -58,6 +64,8 @@ struct BodyData: Codable, Equatable {
         bp = try c.decodeIfPresent([BPReading].self, forKey: .bp) ?? []
         events = try c.decodeIfPresent([SymptomEvent].self, forKey: .events) ?? []
         ratings = try c.decodeIfPresent([String: [String: Int]].self, forKey: .ratings) ?? [:]
+        flow = try c.decodeIfPresent([String: Int].self, forKey: .flow) ?? [:]
+        cycleNotes = try c.decodeIfPresent([String: [String]].self, forKey: .cycleNotes) ?? [:]
     }
 
     mutating func addEvent(_ e: SymptomEvent) {
@@ -90,7 +98,13 @@ struct BodyData: Codable, Equatable {
         for (day, levels) in other.ratings {
             for (name, level) in levels where ratings[day]?[name] == nil { ratings[day, default: [:]][name] = level }
         }
-        return new.count + newEvents.count
+        var added = new.count + newEvents.count
+        for (day, f) in other.flow where flow[day] == nil {
+            flow[day] = f
+            added += 1
+        }
+        for (day, notes) in other.cycleNotes where cycleNotes[day] == nil { cycleNotes[day] = notes }
+        return added
     }
 }
 
@@ -168,5 +182,97 @@ enum BodyMath {
         f.timeZone = calendar.timeZone
         f.setLocalizedDateFormatFromTemplate("MMMd")
         return f.string(from: d)
+    }
+}
+
+/// Period and cycle predictions from the days a person logged.
+enum CycleMath {
+    static let defaultSymptoms = ["Cravings", "Cramps", "Bloating", "Breakout", "Breast tenderness", "Headache", "Fatigue", "Mood"]
+    static let allSymptoms = defaultSymptoms + ["Back pain", "Nausea", "Trouble sleeping", "Discharge"]
+    static let flowNames = ["None", "Spotting", "Light", "Medium", "Heavy"]
+
+    static func key(_ d: Date, _ cal: Calendar) -> String { HistoryImport.dayKey(d, calendar: cal) }
+
+    static func date(_ key: String, _ cal: Calendar) -> Date? {
+        let p = key.split(separator: "-").compactMap { Int($0) }
+        guard p.count == 3 else { return nil }
+        return cal.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))
+    }
+
+    static func days(_ a: Date, _ b: Date, _ cal: Calendar) -> Int {
+        cal.dateComponents([.day], from: cal.startOfDay(for: a), to: cal.startOfDay(for: b)).day ?? 0
+    }
+
+    /// First days of each period: a day with light flow or more, with no period day in the 10 days before.
+    /// Spotting alone doesn't start a period.
+    static func starts(_ flow: [String: Int], _ cal: Calendar) -> [Date] {
+        let periodDays = flow.filter { $0.value >= 2 }.keys.compactMap { date($0, cal) }.sorted()
+        var out: [Date] = []
+        var last: Date?
+        for d in periodDays {
+            if let l = last, days(l, d, cal) <= 10 {
+                last = d
+                continue
+            }
+            out.append(d)
+            last = d
+        }
+        return out
+    }
+
+    /// Lengths between period starts, ignoring gaps that look like a missed log (under 15 or over 60 days).
+    static func lengths(_ starts: [Date], _ cal: Calendar) -> [Int] {
+        guard starts.count >= 2 else { return [] }
+        return (1..<starts.count).map { days(starts[$0 - 1], starts[$0], cal) }.filter { (15...60).contains($0) }
+    }
+
+    struct Prediction: Equatable {
+        var cycleDay: Int
+        var shortest: Int
+        var longest: Int
+        var nextFrom: Date
+        var nextTo: Date
+        /// False while there are too few logged cycles and a typical 28 days is assumed.
+        var fromHistory: Bool
+    }
+
+    /// Where today is in the cycle and when the next period likely starts, from the last 6 cycles.
+    static func predict(_ flow: [String: Int], today: Date, _ cal: Calendar) -> Prediction? {
+        let st = starts(flow, cal)
+        guard let last = st.last, last <= today else { return nil }
+        let recent = Array(lengths(st, cal).suffix(6))
+        var lo = 26, hi = 30
+        if recent.count >= 3 {
+            lo = recent.min()!
+            hi = recent.max()!
+        } else if !recent.isEmpty {
+            let avg = Int((Double(recent.reduce(0, +)) / Double(recent.count)).rounded())
+            lo = avg - 2
+            hi = avg + 2
+        }
+        var from = cal.date(byAdding: .day, value: lo, to: last) ?? last
+        var to = cal.date(byAdding: .day, value: hi, to: last) ?? last
+        // Late: move the window forward so it never sits in the past.
+        if to < cal.startOfDay(for: today) {
+            let shift = days(to, today, cal)
+            from = cal.date(byAdding: .day, value: shift, to: from) ?? from
+            to = cal.date(byAdding: .day, value: shift, to: to) ?? to
+        }
+        return Prediction(cycleDay: days(last, today, cal) + 1, shortest: lo, longest: hi, nextFrom: from, nextTo: to, fromHistory: recent.count >= 3)
+    }
+
+    /// Symptoms logged in the 5 days before a period in at least 3 of the last 5 cycles.
+    static func beforePeriod(_ notes: [String: [String]], starts: [Date], _ cal: Calendar) -> [String] {
+        let recent = Array(starts.suffix(5))
+        guard recent.count >= 3 else { return [] }
+        var hits: [String: Int] = [:]
+        for s in recent {
+            var seen = Set<String>()
+            for i in 1...5 {
+                if let d = cal.date(byAdding: .day, value: -i, to: s) { seen.formUnion(notes[key(d, cal)] ?? []) }
+            }
+            for n in seen { hits[n, default: 0] += 1 }
+        }
+        return hits.filter { $0.value >= 3 }.keys.sorted()
     }
 }
