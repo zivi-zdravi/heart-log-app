@@ -159,6 +159,18 @@ enum BodyMath {
     }
     static let bpTags = ["Left arm", "Right arm", "After coffee", "After exercise"]
 
+    enum Tracker: CaseIterable { case bloodPressure, cycle, menopause }
+
+    /// The trackers offered first for someone's sex and age. The others stay reachable in Settings.
+    static func suggested(female: Bool?, age: Int?) -> Set<Tracker> {
+        guard let female else { return Set(Tracker.allCases) }
+        if !female { return [.bloodPressure] }
+        guard let age else { return Set(Tracker.allCases) }
+        if age < 40 { return [.bloodPressure, .cycle] }
+        if age < 55 { return Set(Tracker.allCases) }
+        return [.bloodPressure, .menopause]
+    }
+
     /// A reading that could be real. Rejects typos like a missing digit or the numbers swapped.
     static func valid(systolic: Int, diastolic: Int, pulse: Int?) -> Bool {
         guard (60...260).contains(systolic), (30...160).contains(diastolic), systolic > diastolic else { return false }

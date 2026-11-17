@@ -111,4 +111,13 @@ final class BodyTests: XCTestCase {
         notes[k(10, 1)] = ["Cramps"]
         XCTAssertEqual(CycleMath.beforePeriod(notes, starts: st, cal), ["Bloating"])
     }
+
+    func testSuggestedTrackers() {
+        XCTAssertEqual(BodyMath.suggested(female: false, age: 45), [.bloodPressure])
+        XCTAssertEqual(BodyMath.suggested(female: true, age: 19), [.bloodPressure, .cycle])
+        XCTAssertEqual(BodyMath.suggested(female: true, age: 51), [.bloodPressure, .cycle, .menopause])
+        XCTAssertEqual(BodyMath.suggested(female: true, age: 60), [.bloodPressure, .menopause])
+        XCTAssertEqual(BodyMath.suggested(female: nil, age: 30).count, 3)
+        XCTAssertEqual(BodyMath.suggested(female: true, age: nil).count, 3)
+    }
 }

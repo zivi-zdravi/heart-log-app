@@ -120,6 +120,17 @@ struct ToggleChips: View {
 
 struct BodySettingsView: View {
     @ObservedObject private var store = BodyStore.shared
+    @ObservedObject private var app = SettingsStore.shared
+    @State private var showAll = false
+
+    /// Shown: the ones suggested for this person, anything already on, or everything after "Show all trackers".
+    private func shows(_ t: BodyMath.Tracker, on: Bool) -> Bool {
+        showAll || on || BodyMath.suggested(female: app.value.female, age: app.value.age).contains(t)
+    }
+    private var hidesSome: Bool {
+        let st = store.settings
+        return !(shows(.bloodPressure, on: st.bloodPressure) && shows(.cycle, on: st.cycle) && shows(.menopause, on: st.menopause))
+    }
 
     private func binding(_ key: WritableKeyPath<BodySettings, Bool>) -> Binding<Bool> {
         Binding(get: { store.settings[keyPath: key] }, set: { v in var s = store.settings; s[keyPath: key] = v; store.settings = s })
@@ -128,9 +139,18 @@ struct BodySettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle(isOn: binding(\.bloodPressure)) { row("Blood pressure", "Readings you enter by hand") }
-                Toggle(isOn: binding(\.cycle)) { row("Cycle", "Period, flow, symptoms and predictions") }
-                Toggle(isOn: binding(\.menopause)) { row("Menopause", "Hot flashes, night sweats and more") }
+                if shows(.bloodPressure, on: store.settings.bloodPressure) {
+                    Toggle(isOn: binding(\.bloodPressure)) { row("Blood pressure", "Readings you enter by hand") }
+                }
+                if shows(.cycle, on: store.settings.cycle) {
+                    Toggle(isOn: binding(\.cycle)) { row("Cycle", "Period, flow, symptoms and predictions") }
+                }
+                if shows(.menopause, on: store.settings.menopause) {
+                    Toggle(isOn: binding(\.menopause)) { row("Menopause", "Hot flashes, night sweats and more") }
+                }
+                if hidesSome {
+                    Button("Show all trackers") { showAll = true }.foregroundColor(Theme.blue)
+                }
             } footer: {
                 Text("Turn on only what you want to track. Anything turned off disappears from Today and the Body log screen; what you already logged is kept.")
             }

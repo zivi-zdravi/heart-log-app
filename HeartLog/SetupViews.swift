@@ -228,9 +228,10 @@ struct SetupFlow: View {
                 toggle("Body log", "Blood pressure, cycle, menopause", $bodyLogOn)
                 if bodyLogOn {
                     VStack(spacing: 0) {
-                        toggle("Blood pressure", nil, bodyBinding(\.bloodPressure))
-                        toggle("Cycle", nil, bodyBinding(\.cycle))
-                        toggle("Menopause", nil, bodyBinding(\.menopause))
+                        let offer = BodyMath.suggested(female: settings.value.female, age: settings.value.age)
+                        if offer.contains(.bloodPressure) { toggle("Blood pressure", nil, bodyBinding(\.bloodPressure)) }
+                        if offer.contains(.cycle) { toggle("Cycle", nil, bodyBinding(\.cycle)) }
+                        if offer.contains(.menopause) { toggle("Menopause", nil, bodyBinding(\.menopause)) }
                     }
                     .padding(.leading, 16)
                 }
