@@ -76,4 +76,12 @@ final class DetailTests: XCTestCase {
         XCTAssertNil(DetailMath.restingForZones([50, 52]))
         XCTAssertEqual(DetailMath.restingForZones([60, 50, 52, 55, 51, 53, 54]), 53)
     }
+
+    func testGreeting() {
+        XCTAssertEqual(DetailMath.greeting(hour: 7, name: "Katie", serbian: false), "Good morning, Katie")
+        XCTAssertEqual(DetailMath.greeting(hour: 13, name: "Zoran", serbian: true), "Dobar dan, Zoran")
+        XCTAssertEqual(DetailMath.greeting(hour: 20, name: " ", serbian: false), "Good evening")
+        XCTAssertEqual(DetailMath.morningLine(asleepMin: 456, recovery: 70), "7:36 asleep. Recovery 70%. Room for a harder day.")
+        XCTAssertEqual(DetailMath.morningLine(asleepMin: nil, recovery: nil), "Last night is still being worked out.")
+    }
 }

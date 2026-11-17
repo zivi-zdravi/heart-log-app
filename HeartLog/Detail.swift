@@ -149,6 +149,37 @@ enum DetailMath {
         burned + Metrics.bmrPerMinute(body) * Double(max(0, dayEnd - now)) / 60_000
     }
 
+    // MARK: Greetings
+
+    /// "Good morning, Katie" or "Dobro jutro, Katie". Morning until noon, afternoon until 5 PM, evening after.
+    static func greeting(hour: Int, name: String, serbian: Bool) -> String {
+        let part = hour < 12 ? 0 : hour < 17 ? 1 : 2
+        let words = serbian ? ["Dobro jutro", "Dobar dan", "Dobro veče"] : ["Good morning", "Good afternoon", "Good evening"]
+        let n = name.trimmingCharacters(in: .whitespaces)
+        return n.isEmpty ? words[part] : "\(words[part]), \(n)"
+    }
+
+    static func advice(_ recovery: Double?) -> String? {
+        guard let r = recovery else { return nil }
+        switch SleepMath.level(r) {
+        case .high: return "Room for a harder day."
+        case .mid: return "A normal day is fine."
+        case .low: return "Keep today light."
+        }
+    }
+
+    /// One line for the morning: "7:36 asleep. Recovery 70%. Room for a harder day."
+    static func morningLine(asleepMin: Double?, recovery: Double?) -> String {
+        var parts: [String] = []
+        if let a = asleepMin {
+            let m = Int(a.rounded())
+            parts.append("\(m / 60):\(String(format: "%02d", m % 60)) asleep.")
+        }
+        if let r = recovery { parts.append("Recovery \(Int(r.rounded()))%.") }
+        if let adv = advice(recovery) { parts.append(adv) }
+        return parts.isEmpty ? "Last night is still being worked out." : parts.joined(separator: " ")
+    }
+
     // MARK: Heart rate zones
 
     /// A common age-based estimate of max heart rate (Tanaka: 208 minus 0.7 times age).

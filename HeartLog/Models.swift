@@ -20,6 +20,8 @@ struct AppSettings: Codable, Equatable {
     var mealsOn = true
     var waterOn = true
     var alarmOn = true
+    var serbianGreeting = false
+    var morningSummary = true
 
     init() {}
 
@@ -37,6 +39,8 @@ struct AppSettings: Codable, Equatable {
         mealsOn = try c.decodeIfPresent(Bool.self, forKey: .mealsOn) ?? true
         waterOn = try c.decodeIfPresent(Bool.self, forKey: .waterOn) ?? true
         alarmOn = try c.decodeIfPresent(Bool.self, forKey: .alarmOn) ?? true
+        serbianGreeting = try c.decodeIfPresent(Bool.self, forKey: .serbianGreeting) ?? false
+        morningSummary = try c.decodeIfPresent(Bool.self, forKey: .morningSummary) ?? true
     }
 
     var zoneBounds: [Int] { Metrics.zoneBounds(maxHR: maxHR, resting: restingForZones) }

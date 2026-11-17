@@ -190,6 +190,22 @@ struct ProfileBodyView: View {
             } footer: {
                 Text("Used for calorie estimates. Stays on this phone. Changes save automatically.")
             }
+            Section {
+                Toggle(isOn: $settings.value.serbianGreeting) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Greet me in Serbian")
+                        Text("English unless this is on").font(.system(size: 13)).foregroundColor(Theme.dim)
+                    }
+                }
+                Toggle(isOn: $settings.value.morningSummary) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Morning summary")
+                        Text("First open before noon, until you scroll").font(.system(size: 13)).foregroundColor(Theme.dim)
+                    }
+                }
+            } header: {
+                Text("Greetings")
+            }
         }
         .settingsPage("Profile and body")
         .onAppear {
@@ -395,6 +411,7 @@ struct BackupView: View {
 // MARK: - About and troubleshooting
 
 struct AboutView: View {
+    @State private var previewWelcome = false
     @ObservedObject private var r = Recorder.shared
     @ObservedObject private var link = BandLink.shared
     @ObservedObject private var capture = BandCapture.shared
@@ -449,8 +466,17 @@ struct AboutView: View {
                     NavigationLink("Recording reports") { RecordingReportsView() }
                 }
             }
+            Section {
+                Button("Play the welcome animation") { previewWelcome = true }
+            } footer: {
+                Text("The welcome new people see after setup. Nothing is changed.")
+            }
         }
         .settingsPage("About and troubleshooting")
+        .fullScreenCover(isPresented: $previewWelcome) {
+            WelcomeBurst(name: SettingsStore.shared.value.profileName) { previewWelcome = false }
+                .background(Theme.bg).ignoresSafeArea()
+        }
         .onAppear { sessions = Store.shared.sessions() }
     }
 }
@@ -501,6 +527,7 @@ struct RootView: View {
     @State private var tab = 0
     @ObservedObject private var settings = SettingsStore.shared
     @AppStorage("setupDone") private var setupDone = false
+    @State private var welcome = false
     @State private var sleepDay = Calendar.current.startOfDay(for: Date())
 
     init() {
@@ -535,8 +562,18 @@ struct RootView: View {
             }
         }
         .tint(Theme.orange)
+        .overlay {
+            if welcome {
+                WelcomeBurst(name: settings.value.profileName) { welcome = false }
+                    .ignoresSafeArea()
+            }
+        }
         .fullScreenCover(isPresented: Binding(get: { !setupDone }, set: { _ in })) {
-            SetupFlow { setupDone = true }.preferredColorScheme(.dark)
+            SetupFlow {
+                welcome = true
+                setupDone = true
+            }
+            .preferredColorScheme(.dark)
         }
     }
 }

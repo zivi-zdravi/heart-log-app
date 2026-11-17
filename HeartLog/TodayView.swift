@@ -59,6 +59,11 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
+                GeometryReader { g in
+                    Color.clear.preference(key: ScrollTopKey.self, value: g.frame(in: .named("todayScroll")).minY)
+                }
+                .frame(height: 0)
+                morningSky
                 VStack(alignment: .leading, spacing: 12) {
                     header
                     if isToday {
@@ -84,6 +89,10 @@ struct TodayView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
+            .coordinateSpace(name: "todayScroll")
+            .onPreferenceChange(ScrollTopKey.self) { y in
+                if skyVisible && y < -24 { withAnimation(.easeOut(duration: 0.3)) { skyVisible = false } }
+            }
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
@@ -92,6 +101,8 @@ struct TodayView: View {
             })
         }
         .task(id: day) { await reload() }
+        .onAppear(perform: checkMorning)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in checkMorning() }
         .sheet(isPresented: $asking) { AskView(range: .week) }
         .followToday($day)
         .onAppear { Task { await reload() } }
@@ -125,9 +136,44 @@ struct TodayView: View {
 
     private var showAsk: Bool { ai.isSetUp && ai.settings.ask }
 
+    @AppStorage("morningSkyDay") private var morningSkyDay = ""
+    @State private var skyVisible = false
+
+    private var greetingText: String {
+        DetailMath.greeting(hour: Calendar.current.component(.hour, from: Date()), name: settings.value.profileName, serbian: settings.value.serbianGreeting)
+    }
+
+    /// First open of the day, before noon: show the morning sky until the person scrolls.
+    private func checkMorning() {
+        let key = DayEngine.shared.key(Date())
+        guard isToday, settings.value.morningSummary, Calendar.current.component(.hour, from: Date()) < 12, morningSkyDay != key else { return }
+        morningSkyDay = key
+        skyVisible = true
+    }
+
+    @ViewBuilder private var morningSky: some View {
+        if skyVisible && isToday {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(greetingText, systemImage: "sun.max.fill").labelStyle(AccentLabel(color: Theme.orange))
+                    .font(Theme.display(24)).foregroundColor(Theme.text)
+                Text(DetailMath.morningLine(asleepMin: record?.sleep?.asleepMin, recovery: record?.recovery))
+                    .font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 18)
+            .background(LinearGradient(colors: [Theme.orange.opacity(0.35), Color(hex: 0xC7A6E8).opacity(0.18), Theme.bg.opacity(0)],
+                                       startPoint: .top, endPoint: .bottom))
+            .transition(.opacity.combined(with: .move(edge: .top)))
+            .accessibilityElement(children: .combine)
+        }
+    }
+
     private var header: some View {
         HStack(alignment: showAsk ? .bottom : .top) {
             VStack(alignment: .leading, spacing: 0) {
+                if isToday && !skyVisible {
+                    Text(greetingText).font(.system(size: 13)).foregroundColor(Color(hex: 0xC9D3CE))
+                }
                 DayChevrons(text: Theme.dayText.string(from: day), canGoForward: !isToday, move: move)
                 Text(isToday ? "Today" : Theme.weekday.string(from: day)).font(Theme.display(30)).foregroundColor(Theme.text)
             }
@@ -334,4 +380,9 @@ struct TodayView: View {
             }
         }
     }
+}
+
+private struct ScrollTopKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

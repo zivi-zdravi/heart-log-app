@@ -239,6 +239,8 @@ struct SetupFlow: View {
                 toggle("Band alarm", "Silent wake-up buzz", $settings.value.alarmOn)
                 Divider().overlay(Theme.track)
                 toggle("Notifications", "Low battery, wind-down, step goal", $notificationsOn)
+                Divider().overlay(Theme.track)
+                toggle("Greet me in Serbian", "English unless this is on: Dobro jutro, Dobar dan, Dobro veče", $settings.value.serbianGreeting)
             }
             Text("Each of these has more choices in Settings later.").font(.system(size: 13)).foregroundColor(Theme.dim)
         }
@@ -375,5 +377,77 @@ enum SetupGate {
         let dir = Store.shared.dir
         return FileManager.default.fileExists(atPath: dir.appendingPathComponent("settings.json").path)
             || !HistoryStore.shared.days.isEmpty
+    }
+}
+
+/// The welcome after setup: a grey dot grows inside a drawing green ring, the name appears,
+/// then the dot floods the screen and bursts to show Today. About 2 seconds; a tap skips it.
+struct WelcomeBurst: View {
+    let name: String
+    let done: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var ring: CGFloat = 0
+    @State private var dot: CGFloat = 10
+    @State private var nameShown = false
+    @State private var flood = false
+    @State private var gone = false
+    @State private var finished = false
+
+    private let dotColor = Color(hex: 0x222C2E)
+
+    var body: some View {
+        GeometryReader { g in
+            let cover = max(g.size.width, g.size.height) * 2.4
+            ZStack {
+                Theme.bg.opacity(flood ? 0 : 1)
+                Circle().fill(dotColor).frame(width: flood ? cover : dot, height: flood ? cover : dot)
+                if !flood {
+                    Circle().trim(from: 0, to: ring)
+                        .stroke(Theme.green, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 140, height: 140)
+                }
+                VStack(spacing: 6) {
+                    Spacer().frame(height: 220)
+                    Text(name.isEmpty ? "Welcome" : "Welcome, \(name)").font(Theme.display(26)).foregroundColor(Theme.text)
+                    Text("Your first night starts tonight.").font(.system(size: 14)).foregroundColor(Color(hex: 0xC9D3CE))
+                }
+                .opacity(nameShown && !flood ? 1 : 0)
+            }
+            .frame(width: g.size.width, height: g.size.height)
+            .opacity(gone ? 0 : 1)
+            .scaleEffect(gone ? 1.15 : 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { finish() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(name.isEmpty ? "Welcome" : "Welcome, \(name)")
+        .accessibilityAddTraits(.isButton)
+        .onAppear(perform: play)
+    }
+
+    private func play() {
+        if reduceMotion {
+            ring = 1
+            dot = 0
+            nameShown = true
+            after(1.2) { withAnimation(.easeOut(duration: 0.4)) { gone = true } }
+            after(1.6) { finish() }
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.9)) { ring = 1; dot = 96 }
+        after(0.8) { withAnimation(.easeOut(duration: 0.3)) { nameShown = true } }
+        after(1.3) { withAnimation(.easeIn(duration: 0.45)) { flood = true } }
+        after(1.75) { withAnimation(.easeOut(duration: 0.3)) { gone = true } }
+        after(2.1) { finish() }
+    }
+
+    private func after(_ s: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + s, execute: f) }
+
+    private func finish() {
+        guard !finished else { return }
+        finished = true
+        done()
     }
 }
