@@ -500,10 +500,15 @@ struct RecordingReportsView: View {
 struct RootView: View {
     @State private var tab = 0
     @ObservedObject private var settings = SettingsStore.shared
-    @AppStorage("setupDone") private var setupDone = SetupGate.alreadyInUse
+    @AppStorage("setupDone") private var setupDone = false
     @State private var sleepDay = Calendar.current.startOfDay(for: Date())
 
     init() {
+        // Decided once, on the first launch of this version: a phone already in use skips setup.
+        // Stored right away so quitting halfway through setup brings it back next time.
+        if UserDefaults.standard.object(forKey: "setupDone") == nil {
+            UserDefaults.standard.set(SetupGate.alreadyInUse, forKey: "setupDone")
+        }
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(Theme.card)
