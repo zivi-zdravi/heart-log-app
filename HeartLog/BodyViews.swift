@@ -357,23 +357,8 @@ struct BodyLogView: View {
                 Text("Body log").font(Theme.display(30)).foregroundColor(Theme.text)
                 Text("Tap one to log it. Each opens its own screen with history.").font(.system(size: 13)).foregroundColor(Theme.dim)
                 let st = store.data.settings
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    if st.bloodPressure {
-                        NavigationLink { BPView() } label: {
-                            tile("heart.text.square", Theme.orange, "Blood pressure",
-                                 store.data.bp.first.map { "Last: \(BodyMath.text($0)), \(Theme.clock($0.time))" } ?? "No readings yet")
-                        }
-                    }
-                    if st.cycle {
-                        NavigationLink { CycleView() } label: { tile("drop.fill", cyclePink, "Cycle", CycleSummary.line(store.data)) }
-                    }
-                }
-                .buttonStyle(.plain)
+                BodyTiles(items: tileItems)
                 if st.menopause {
-                    NavigationLink { MenopauseView() } label: {
-                        tile("thermometer.medium", lilac, "Menopause", "Hot flashes, night sweats, sleep, joints and more")
-                    }
-                    .buttonStyle(.plain)
                     Text("Quick log, today").font(.system(size: 13)).foregroundColor(Theme.dim).padding(.top, 6)
                     QuickLog()
                     Text("Your four come first. Tap +1 each time; the time is saved so it can be lined up with your sleep and heart rate.")
@@ -392,6 +377,28 @@ struct BodyLogView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    private var tileItems: [BodyTile] {
+        let st = store.data.settings
+        var out: [BodyTile] = []
+        if st.bloodPressure {
+            out.append(BodyTile(id: "bp", view: AnyView(NavigationLink { BPView() } label: {
+                tile("heart.text.square", Theme.orange, "Blood pressure",
+                     store.data.bp.first.map { "Last: \(BodyMath.text($0)), \(Theme.clock($0.time))" } ?? "No readings yet")
+            })))
+        }
+        if st.cycle {
+            out.append(BodyTile(id: "cycle", view: AnyView(NavigationLink { CycleView() } label: {
+                tile("drop.fill", cyclePink, "Cycle", CycleSummary.line(store.data))
+            })))
+        }
+        if st.menopause {
+            out.append(BodyTile(id: "meno", view: AnyView(NavigationLink { MenopauseView() } label: {
+                tile("thermometer.medium", lilac, "Menopause", "Hot flashes, night sweats, sleep, joints and more")
+            })))
+        }
+        return out
+    }
+
     private func tile(_ icon: String, _ color: Color, _ title: String, _ note: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Image(systemName: icon).font(.system(size: 20)).foregroundColor(color)
@@ -403,6 +410,28 @@ struct BodyLogView: View {
         .background(Theme.card)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .contentShape(Rectangle())
+    }
+}
+
+struct BodyTile: Identifiable {
+    let id: String
+    let view: AnyView
+}
+
+/// Tiles two to a row; an odd one out at the end runs full width.
+struct BodyTiles: View {
+    let items: [BodyTile]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ForEach(Array(stride(from: 0, to: items.count, by: 2)), id: \.self) { i in
+                HStack(spacing: 10) {
+                    items[i].view
+                    if i + 1 < items.count { items[i + 1].view }
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
