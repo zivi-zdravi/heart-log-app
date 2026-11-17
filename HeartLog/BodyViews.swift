@@ -299,13 +299,13 @@ struct BodyLogCard: View {
         if store.data.settings.anyOn {
             NavigationLink { BodyLogView() } label: {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "heart.text.square").font(.system(size: 20)).foregroundColor(Theme.green).padding(.top, 1)
+                    Image(systemName: "heart.text.square").font(.system(size: 20)).foregroundColor(lilac).padding(.top, 1)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Body log").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
                             Spacer()
-                            Text("Log").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.green)
-                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.dim)
+                            Text("Log").font(.system(size: 14, weight: .semibold)).foregroundColor(lilac)
+                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(lilac)
                         }
                         if store.data.settings.bloodPressure {
                             line("Blood pressure") {
@@ -327,8 +327,7 @@ struct BodyLogCard: View {
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .accentCard(lilac, radius: 16)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

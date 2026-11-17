@@ -68,7 +68,7 @@ struct TodayView: View {
                     scores
                     ForEach(summary.suggestions, id: \.self) { suggestion($0) }
                     tiles
-                    AlarmTile()
+                    AlarmTile(accent: Theme.green)
                     BodyLogCard()
                     dayActivities
                     if record?.isWhoop == true && !summary.hasData {
@@ -175,9 +175,10 @@ struct TodayView: View {
     }
 
     private var liveCard: some View {
-        Card {
+        Card(accent: Theme.orange) {
             HStack {
-                Text("Heart rate now").font(.system(size: 13)).foregroundColor(Theme.dim)
+                Label("Heart rate now", systemImage: "heart.fill").labelStyle(AccentLabel(color: Theme.orange))
+                    .font(.system(size: 13)).foregroundColor(Theme.dim)
                 Spacer()
                 if rec.recording {
                     HStack(spacing: 6) {
@@ -242,8 +243,7 @@ struct TodayView: View {
 
     private var scores: some View {
         let r = record
-        let whoop = r?.isWhoop == true
-        return Card {
+        return Card(accent: Theme.green) {
             NavigationLink {
                 if let r { RecoveryView(day: day, record: r) }
             } label: {
@@ -301,17 +301,17 @@ struct TodayView: View {
         let cal = r?.calories ?? summary.calories
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             NavigationLink { MetricDetailView(kind: .hrv, day: day) } label: {
-                Tile(title: "HRV, overnight", value: hrv.map { "\(Int($0.rounded())) ms" } ?? "--", note: r?.usualHRV.map { "Usually \(Int($0.rounded()))" }, opens: true)
+                Tile(title: "HRV, overnight", value: hrv.map { "\(Int($0.rounded())) ms" } ?? "--", note: r?.usualHRV.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.blue, icon: "waveform.path.ecg")
             }
             NavigationLink { MetricDetailView(kind: .rhr, day: day) } label: {
-                Tile(title: "Resting heart rate", value: rhr.map { "\($0)" } ?? "--", note: r?.usualRHR.map { "Usually \(Int($0.rounded()))" }, opens: true)
+                Tile(title: "Resting heart rate", value: rhr.map { "\($0)" } ?? "--", note: r?.usualRHR.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.orange, icon: "heart")
             }
             NavigationLink { StepsHistoryView() } label: {
-                Tile(title: "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.note.isEmpty ? nil : steps.note, opens: true)
+                Tile(title: "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.note.isEmpty ? nil : steps.note, opens: true, accent: Theme.green, icon: "figure.walk")
             }
             NavigationLink { CaloriesDetailView(day: day) } label: {
                 Tile(title: "Calories burned", value: cal.map { Int($0).formatted() } ?? "--",
-                     note: whoopOr(settings.value.body == nil && cal == nil ? "Add your details in Settings" : "Estimate"), opens: true)
+                     note: whoopOr(settings.value.body == nil && cal == nil ? "Add your details in Settings" : "Estimate"), opens: true, accent: Theme.orange, icon: "flame")
             }
         }
         .buttonStyle(.plain)

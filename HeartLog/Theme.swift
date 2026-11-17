@@ -36,15 +36,43 @@ enum Theme {
 }
 
 struct Card<Content: View>: View {
+    let accent: Color?
     let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    init(accent: Color? = nil, @ViewBuilder content: () -> Content) {
+        self.accent = accent
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Theme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .accentCard(accent, radius: 16)
+    }
+}
+
+extension View {
+    /// Card background. With an accent: a faint wash of that color and a thin outline in it.
+    func accentCard(_ accent: Color?, radius: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius)
+        return self
+            .background(ZStack {
+                shape.fill(Theme.card)
+                shape.fill((accent ?? .clear).opacity(0.09))
+            })
+            .clipShape(shape)
+            .overlay(shape.strokeBorder((accent ?? .clear).opacity(0.7), lineWidth: 1))
+    }
+}
+
+/// A label whose icon is drawn in an accent color and whose text keeps the surrounding color.
+struct AccentLabel: LabelStyle {
+    let color: Color
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.foregroundColor(color).font(.system(size: 12, weight: .semibold))
+            configuration.title
+        }
     }
 }
 
@@ -114,9 +142,12 @@ struct Tile: View {
     let value: String
     var note: String?
     var opens = false
+    var accent: Color?
+    var icon: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
+            HStack(spacing: 5) {
+                if let icon, let accent { Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundColor(accent) }
                 Text(title)
                 Spacer(minLength: 0)
                 if opens { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)) }
@@ -128,8 +159,7 @@ struct Tile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .accentCard(accent, radius: 14)
         .contentShape(Rectangle())
     }
 }

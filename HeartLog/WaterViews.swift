@@ -135,6 +135,7 @@ struct DoubleTapView: View {
 
 /// The band alarm on Today, under the four tiles (approved mockup).
 struct AlarmTile: View {
+    var accent: Color?
     @ObservedObject private var store = AlarmStore.shared
     @ObservedObject private var link = BandLink.shared
     @State private var open = false
@@ -164,8 +165,7 @@ struct AlarmTile: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(Theme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .accentCard(accent, radius: 14)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(store.next.map { "Band alarm, \(AlarmView.dayTime($0)), \(AlarmView.relative($0)), \(saved($0) ? "saved on the band" : "not saved yet"). Open alarm" } ?? "Band alarm off. Open alarm")
