@@ -195,7 +195,7 @@ struct SleepView: View {
     }
 
     private func scoreCard(_ r: DayRecord, _ p: SleepPeriod) -> some View {
-        Card {
+        Card(accent: Theme.blue) {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(r.isWhoop ? "Sleep score (WHOOP)" : "Sleep score (estimate)").font(.system(size: 13)).foregroundColor(Theme.dim)
@@ -213,7 +213,7 @@ struct SleepView: View {
     }
 
     private func chartCard(_ p: SleepPeriod) -> some View {
-        Card {
+        Card(accent: Theme.blue) {
             Text("Overnight heart rate").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
             HRChart(samples: samples, color: Theme.blue).frame(height: 120)
             HStack {
@@ -397,15 +397,15 @@ struct SleepView: View {
 
     private func tiles(_ r: DayRecord, _ p: SleepPeriod) -> some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            Tile(title: isToday ? "Tonight's need" : "Sleep need", value: r.sleepNeedMin.map { Theme.minutes($0) } ?? "--")
-            Tile(title: "Sleep debt", value: r.debtMin.map { Theme.minutes($0) } ?? "--")
+            Tile(title: isToday ? "Tonight's need" : "Sleep need", value: r.sleepNeedMin.map { Theme.minutes($0) } ?? "--", accent: Theme.blue, icon: "bed.double")
+            Tile(title: "Sleep debt", value: r.debtMin.map { Theme.minutes($0) } ?? "--", accent: Theme.blue, icon: "hourglass")
             if let t = targets {
-                Tile(title: "Target bedtime", value: Theme.clock(t.bed))
-                Tile(title: "Target wake", value: Theme.clock(t.wake))
+                Tile(title: "Target bedtime", value: Theme.clock(t.bed), accent: Theme.blue, icon: "moon")
+                Tile(title: "Target wake", value: Theme.clock(t.wake), accent: Theme.blue, icon: "sun.max")
             } else {
-                Tile(title: "Overnight HRV", value: r.hrv.map { "\(Int($0.rounded())) ms" } ?? "--")
+                Tile(title: "Overnight HRV", value: r.hrv.map { "\(Int($0.rounded())) ms" } ?? "--", accent: Theme.blue, icon: "waveform.path.ecg")
                 let wakeUps = stages.map { StageMath.wakeUps($0) } ?? p.awakeEvents
-                Tile(title: "Times awake", value: wakeUps.map { stages != nil ? "\($0)" : "~\($0)" } ?? "--")
+                Tile(title: "Times awake", value: wakeUps.map { stages != nil ? "\($0)" : "~\($0)" } ?? "--", accent: Theme.blue, icon: "eye")
             }
         }
     }
@@ -490,7 +490,7 @@ struct RecoveryView: View {
                     Text(Theme.dayText.string(from: day)).font(.system(size: 13)).foregroundColor(Theme.dim)
                     Text("Recovery").font(Theme.display(30)).foregroundColor(Theme.text)
                 }
-                Card {
+                Card(accent: Theme.level(record.recovery)) {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(record.isWhoop ? "Recovery (WHOOP)" : "Recovery (estimate)").font(.system(size: 13)).foregroundColor(Theme.dim)

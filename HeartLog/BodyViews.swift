@@ -406,8 +406,7 @@ struct BodyLogView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
         .padding(14)
-        .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .accentCard(color, radius: 14)
         .contentShape(Rectangle())
     }
 }
@@ -511,7 +510,7 @@ struct BPView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Blood pressure").font(Theme.display(30)).foregroundColor(Theme.text)
-                Card {
+                Card(accent: Theme.orange) {
                     Text("New reading").font(.system(size: 13)).foregroundColor(Theme.dim)
                     HStack(spacing: 10) {
                         box("Top (systolic)", $systolic, 0)
@@ -576,7 +575,7 @@ struct BPView: View {
         let sysRange = DetailMath.usualRange(store.data.bp.prefix(60).map { Double($0.systolic) })
         let diaRange = DetailMath.usualRange(store.data.bp.prefix(60).map { Double($0.diastolic) })
         let first = points.map(\.date).min() ?? Date(), last = points.map(\.date).max() ?? Date()
-        return Card {
+        return Card(accent: Theme.orange) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Last 30 days").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
                 Spacer()
@@ -685,7 +684,7 @@ struct MenopauseView: View {
     }
 
     private var todayCard: some View {
-        Card {
+        Card(accent: lilac) {
             Text("Today and last night").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
             if !counted.isEmpty {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -770,7 +769,7 @@ struct MenopauseView: View {
         .frame(minHeight: 48)
     }
     @ViewBuilder private var sweatCard: some View {
-        Card {
+        Card(accent: lilac) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Night sweats and your sleep").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
                 Spacer()
@@ -810,7 +809,7 @@ struct MenopauseView: View {
     @ViewBuilder private var flashCard: some View {
         let days = flashDays
         let total = days.map(\.count).reduce(0, +)
-        Card {
+        Card(accent: lilac) {
             Text("Hot flashes, last 30 days").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
             if total > 0 {
                 Chart(days) { d in
@@ -894,7 +893,7 @@ struct CycleView: View {
     }
 
     @ViewBuilder private var summaryCard: some View {
-        Card {
+        Card(accent: cyclePink) {
             if let p = prediction {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Day \(p.cycleDay)").font(Theme.display(28)).foregroundColor(Theme.text)
@@ -924,7 +923,7 @@ struct CycleView: View {
         let range = g.range(of: .day, in: .month, for: month) ?? 1..<31
         let offset = (g.component(.weekday, from: month) - g.firstWeekday + 7) % 7
         let cells: [Date?] = Array(repeating: nil, count: offset) + range.compactMap { g.date(byAdding: .day, value: $0 - 1, to: month) }
-        return Card {
+        return Card(accent: cyclePink) {
             HStack {
                 Text(month.formatted(.dateTime.month(.wide))).font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.text)
                 if g.component(.year, from: month) != g.component(.year, from: Date()) {
@@ -981,7 +980,7 @@ struct CycleView: View {
         let hidden = CycleMath.allSymptoms.filter { !shown.contains($0) }
         let list = shown + (showMore ? hidden : [])
         let mood = notes.first { $0.hasPrefix("Mood") }
-        return Card {
+        return Card(accent: cyclePink) {
             Text(cal.isDateInToday(selected) ? "Today" : selected.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
                 .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
             Text("Period").font(.system(size: 13)).foregroundColor(Theme.dim).padding(.top, 2)
@@ -1039,7 +1038,7 @@ struct CycleView: View {
     private var patternsCard: some View {
         let st = CycleMath.starts(store.data.flow, cal)
         let before = CycleMath.beforePeriod(store.data.cycleNotes, starts: st, cal)
-        return Card {
+        return Card(accent: cyclePink) {
             Text("Patterns").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
             if st.count < 3 {
                 Text("Appears once there are 3 logged cycles.").font(.system(size: 12)).foregroundColor(Theme.dim)

@@ -184,10 +184,26 @@ struct TrendChart: View {
     private var cal: Calendar { Calendar.current }
     private func color(_ v: Double) -> Color { metric.colorize ? Theme.level(v) : metric.color }
 
+    private var icon: String {
+        switch metric.title {
+        case "Recovery": return "arrow.triangle.2.circlepath"
+        case "Overnight HRV": return "waveform.path.ecg"
+        case "Resting heart rate": return "heart"
+        case "Breathing rate": return "lungs"
+        case "Sleep score", "Hours slept": return "moon"
+        case "Strain": return "flame"
+        case "Steps": return "figure.walk"
+        default: return "chart.xyaxis.line"
+        }
+    }
+
     var body: some View {
-        Card {
+        Card(accent: metric.color) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(metric.title).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                HStack(spacing: 5) {
+                    Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundColor(metric.color)
+                    Text(metric.title).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                }
                 if metric.opens { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim) }
                 Spacer()
                 Text(headline).font(.system(size: 13)).foregroundColor(Theme.dim).multilineTextAlignment(.trailing)
@@ -400,9 +416,12 @@ struct CaloriesTrend: View {
     private var fullEaten: [Double] { eaten.filter { $0.date < today }.map(\.value) }
 
     var body: some View {
-        Card {
+        Card(accent: Theme.orange) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Calories").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                HStack(spacing: 5) {
+                    Image(systemName: "flame").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.orange)
+                    Text("Calories").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                }
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim)
                 Spacer()
                 Text(headline).font(.system(size: 13)).foregroundColor(Theme.dim).multilineTextAlignment(.trailing)

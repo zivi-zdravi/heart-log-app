@@ -52,7 +52,7 @@ struct Card<Content: View>: View {
 }
 
 extension View {
-    /// Card background. With an accent: a faint wash of that color and a thin outline in it.
+    /// Card background. With an accent: a faint wash of that color.
     func accentCard(_ accent: Color?, radius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius)
         return self
@@ -61,7 +61,6 @@ extension View {
                 shape.fill((accent ?? .clear).opacity(0.09))
             })
             .clipShape(shape)
-            .overlay(shape.strokeBorder((accent ?? .clear).opacity(0.7), lineWidth: 1))
     }
 }
 
@@ -148,7 +147,7 @@ struct Tile: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 if let icon, let accent { Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundColor(accent) }
-                Text(title)
+                Text(title).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 0)
                 if opens { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)) }
             }

@@ -99,7 +99,7 @@ struct MetricDetailView: View {
 
     private var title: String { kind == .hrv ? "HRV" : "Resting heart rate" }
     private var unit: String { kind == .hrv ? "ms" : "bpm" }
-    private var color: Color { kind == .hrv ? Theme.green : Theme.orange }
+    private var color: Color { kind == .hrv ? Theme.blue : Theme.orange }
 
     private static func value(_ r: DayRecord, _ kind: Kind) -> Double? { kind == .hrv ? r.hrv : r.rhr.map(Double.init) }
 
@@ -121,7 +121,7 @@ struct MetricDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 pageHeader(day, title)
-                Card {
+                Card(accent: color) {
                     Text(kind == .hrv ? "Last night" : "Lowest overnight").font(.system(size: 13)).foregroundColor(Theme.dim)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(current.map { "\(Int($0.rounded()))" } ?? "--").font(Theme.display(50)).foregroundColor(Theme.text)
@@ -136,7 +136,7 @@ struct MetricDetailView: View {
                     if record?.isWhoop == true { footnote("From your WHOOP history.") }
                 }
                 if night.count >= 3 {
-                    Card {
+                    Card(accent: color) {
                         cardTitle("Through the night")
                         Chart(night, id: \.t) { p in
                             LineMark(x: .value("Time", date(p.t)), y: .value(unit, p.value))
@@ -153,7 +153,7 @@ struct MetricDetailView: View {
                     }
                 }
                 if history.count >= 2 {
-                    Card {
+                    Card(accent: color) {
                         HStack {
                             cardTitle("Last 30 nights")
                             Spacer()
@@ -262,7 +262,7 @@ struct CaloriesDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 pageHeader(day, "Calories burned")
-                Card {
+                Card(accent: Theme.orange) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(total.map { Int($0).formatted() } ?? "--").font(Theme.display(30)).foregroundColor(Theme.text)
                         Spacer()
@@ -278,7 +278,7 @@ struct CaloriesDetailView: View {
                     if noBody { Text("Add your height, weight and age in Settings to estimate calories.").font(.system(size: 14)).foregroundColor(soft) }
                 }
                 if hourly.contains(where: { $0 > 0 }) {
-                    Card {
+                    Card(accent: Theme.orange) {
                         cardTitle("Hour by hour")
                         Chart(Array(hourly.enumerated()), id: \.offset) { h in
                             BarMark(x: .value("Hour", h.offset), y: .value("Calories", h.element)).foregroundStyle(Theme.orange)
@@ -308,7 +308,7 @@ struct CaloriesDetailView: View {
                     }
                 }
                 if week.contains(where: { $0.burned != nil }) {
-                    Card {
+                    Card(accent: Theme.orange) {
                         HStack {
                             cardTitle("Last 7 days")
                             Spacer()
@@ -472,9 +472,7 @@ struct StepsCard: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.green.opacity(0.5), lineWidth: 1))
+            .accentCard(Theme.green, radius: 16)
         }
         .buttonStyle(.plain)
         .task { await load() }
@@ -562,7 +560,7 @@ struct StepsHistoryView: View {
                     ForEach(Span.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                Card {
+                Card(accent: Theme.green) {
                     if span == .month {
                         let have = monthDays.compactMap { daily[$0] }
                         HStack {

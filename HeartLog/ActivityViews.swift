@@ -232,11 +232,11 @@ struct ActivitySummaryView: View {
                         Text(a.type).font(Theme.display(30)).foregroundColor(Theme.text)
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        Tile(title: "Strain", value: stats.map { String(format: "%.1f", $0.strain) } ?? "--")
-                        Tile(title: "Average", value: stats?.avg.map { "\($0)" } ?? "--")
-                        Tile(title: "Calories", value: stats?.calories.map { Int($0).formatted() } ?? "--")
+                        Tile(title: "Strain", value: stats.map { String(format: "%.1f", $0.strain) } ?? "--", accent: Theme.orange, icon: "flame")
+                        Tile(title: "Average", value: stats?.avg.map { "\($0)" } ?? "--", accent: Theme.orange, icon: "heart")
+                        Tile(title: "Calories", value: stats?.calories.map { Int($0).formatted() } ?? "--", accent: Theme.orange, icon: "bolt")
                     }
-                    Card {
+                    Card(accent: Theme.orange) {
                         Text("Heart rate").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
                         HRChart(samples: stats?.samples ?? [], color: Theme.orange).frame(height: 110)
                         if let m = stats?.max { Text("Max \(m)").font(.system(size: 13)).foregroundColor(Theme.dim) }

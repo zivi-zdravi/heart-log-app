@@ -103,7 +103,7 @@ struct MealsView: View {
     private var summary: some View {
         let t = store.total(key)
         let g = goal?.calories
-        return Card {
+        return Card(accent: Theme.green) {
             HStack(alignment: .firstTextBaseline) {
                 Text(cal(t.kcal)).font(Theme.display(34)).foregroundColor(Theme.text)
                 Spacer()
@@ -237,7 +237,7 @@ struct GoalView: View {
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(aim == a ? .isSelected : [])
                     }
-                    Card {
+                    Card(accent: Theme.green) {
                         Text("Your daily goal").font(.system(size: 13)).foregroundColor(Theme.dim)
                         HStack {
                             step("-", -50)
@@ -515,7 +515,7 @@ struct FoodAmountView: View {
                         }
                     }
                 }
-                Card {
+                Card(accent: Theme.green) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(cal(totals.kcal)).font(Theme.display(34)).foregroundColor(Theme.text)
                         Spacer()
