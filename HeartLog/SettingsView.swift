@@ -499,6 +499,8 @@ struct RecordingReportsView: View {
 
 struct RootView: View {
     @State private var tab = 0
+    @ObservedObject private var settings = SettingsStore.shared
+    @AppStorage("setupDone") private var setupDone = SetupGate.alreadyInUse
     @State private var sleepDay = Calendar.current.startOfDay(for: Date())
 
     init() {
@@ -522,10 +524,15 @@ struct RootView: View {
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(2)
             TrendsView()
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(3)
-            MealsView()
-                .tabItem { Label("Meals", systemImage: "fork.knife") }.tag(4)
+            if settings.value.mealsOn {
+                MealsView()
+                    .tabItem { Label("Meals", systemImage: "fork.knife") }.tag(4)
+            }
         }
         .tint(Theme.orange)
+        .fullScreenCover(isPresented: Binding(get: { !setupDone }, set: { _ in })) {
+            SetupFlow { setupDone = true }.preferredColorScheme(.dark)
+        }
     }
 }
 

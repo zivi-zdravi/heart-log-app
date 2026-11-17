@@ -16,6 +16,10 @@ struct AppSettings: Codable, Equatable {
     var age: Int?
     var female: Bool?
     var lowBattery = 20
+    /// Feature switches chosen in first-run setup and Settings.
+    var mealsOn = true
+    var waterOn = true
+    var alarmOn = true
 
     init() {}
 
@@ -30,6 +34,9 @@ struct AppSettings: Codable, Equatable {
         age = try c.decodeIfPresent(Int.self, forKey: .age)
         female = try c.decodeIfPresent(Bool.self, forKey: .female)
         lowBattery = try c.decodeIfPresent(Int.self, forKey: .lowBattery) ?? 20
+        mealsOn = try c.decodeIfPresent(Bool.self, forKey: .mealsOn) ?? true
+        waterOn = try c.decodeIfPresent(Bool.self, forKey: .waterOn) ?? true
+        alarmOn = try c.decodeIfPresent(Bool.self, forKey: .alarmOn) ?? true
     }
 
     var zoneBounds: [Int] { Metrics.zoneBounds(maxHR: maxHR, resting: restingForZones) }

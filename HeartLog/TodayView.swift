@@ -68,7 +68,7 @@ struct TodayView: View {
                     scores
                     ForEach(summary.suggestions, id: \.self) { suggestion($0) }
                     tiles
-                    AlarmTile(accent: Theme.green)
+                    if settings.value.alarmOn { AlarmTile(accent: Theme.green) }
                     BodyLogCard()
                     dayActivities
                     if record?.isWhoop == true && !summary.hasData {
@@ -203,8 +203,10 @@ struct TodayView: View {
                     openActivity()
                 }
                 .buttonStyle(TintButton(color: Theme.orange))
-                Button("Log a meal") { openMeals() }
-                    .buttonStyle(TintButton(color: Theme.green))
+                if settings.value.mealsOn {
+                    Button("Log a meal") { openMeals() }
+                        .buttonStyle(TintButton(color: Theme.green))
+                }
             }
             .padding(.top, 4)
         }

@@ -14,6 +14,8 @@ struct AlarmView: View {
                 Text("Alarm").font(Theme.display(30)).foregroundColor(Theme.text)
                 Text("Buzzes on your wrist. The band keeps the alarm itself, so it fires even if your phone is off.")
                     .font(.system(size: 14)).foregroundColor(Theme.dim)
+                Toggle("Show the alarm on Today", isOn: Binding(get: { SettingsStore.shared.value.alarmOn }, set: { SettingsStore.shared.value.alarmOn = $0 }))
+                    .tint(Theme.green).font(.system(size: 15)).foregroundColor(Theme.text)
                 nextCard
                 scheduleCard
                 Card {

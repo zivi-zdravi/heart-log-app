@@ -69,4 +69,11 @@ final class DetailTests: XCTestCase {
         XCTAssertEqual(DetailMath.stepsLine(steps: 9000, goal: 8000), "Goal reached.")
         XCTAssertEqual(DetailMath.walkMinutes(100), 5)
     }
+
+    func testZones() {
+        XCTAssertEqual(DetailMath.maxHR(age: 51), 172)
+        XCTAssertEqual(DetailMath.maxHR(age: 15), 198)
+        XCTAssertNil(DetailMath.restingForZones([50, 52]))
+        XCTAssertEqual(DetailMath.restingForZones([60, 50, 52, 55, 51, 53, 54]), 53)
+    }
 }

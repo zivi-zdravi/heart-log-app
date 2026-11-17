@@ -149,6 +149,18 @@ enum DetailMath {
         burned + Metrics.bmrPerMinute(body) * Double(max(0, dayEnd - now)) / 60_000
     }
 
+    // MARK: Heart rate zones
+
+    /// A common age-based estimate of max heart rate (Tanaka: 208 minus 0.7 times age).
+    static func maxHR(age: Int) -> Int { Int((208 - 0.7 * Double(age)).rounded()) }
+
+    /// Resting heart rate for zones: the middle of the last 60 nights, from at least 7.
+    static func restingForZones(_ rhrs: [Int]) -> Int? {
+        let v = Array(rhrs.suffix(60)).sorted()
+        guard v.count >= 7 else { return nil }
+        return v[v.count / 2]
+    }
+
     // MARK: Steps
 
     /// Rough minutes of walking for the steps left, at about 100 steps a minute, to the nearest 5.

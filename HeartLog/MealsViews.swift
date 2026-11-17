@@ -74,7 +74,7 @@ struct MealsView: View {
                         }
                     }
                     meals
-                    WaterCard(key: key)
+                    if SettingsStore.shared.value.waterOn { WaterCard(key: key) }
                     Text("Tap a meal to see or change its foods.").font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
@@ -890,6 +890,15 @@ struct MealsSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Meals", isOn: Binding(get: { SettingsStore.shared.value.mealsOn }, set: { SettingsStore.shared.value.mealsOn = $0 }))
+                Toggle("Water", isOn: Binding(get: { SettingsStore.shared.value.waterOn }, set: { v in
+                    SettingsStore.shared.value.waterOn = v
+                    if !v { WaterFeature.turnedOff() }
+                }))
+            } footer: {
+                Text("Turning Meals off hides the Meals tab. Turning Water off hides water and stops its reminders. What you logged is kept.")
+            }
             Section {
                 Picker("Aiming to", selection: Binding(get: { store.settings.aim }, set: { v in store.settings.aim = v; Task { await reload() } })) {
                     ForEach(MealAim.allCases, id: \.self) { Text($0.rawValue).tag($0) }
