@@ -124,12 +124,18 @@ struct MealsView: View {
                 Text(left >= 0 ? "\(cal(left)) left for \(isToday ? "today" : "the day"). Tap the goal to change it or your aim." : "\(cal(-left)) over the goal")
                     .font(.system(size: 13)).foregroundColor(Theme.dim)
             }
-            HStack {
-                macro("Protein", t.protein)
-                macro("Carbs", t.carbs)
-                macro("Fat", t.fat)
+            if let g {
+                MacroView(eaten: t, targets: MacroMath.targets(calories: g, weightKg: SettingsStore.shared.value.weightKg, settings: store.settings),
+                          style: store.settings.macroStyle, goal: g)
+                    .padding(.top, 4)
+            } else {
+                HStack {
+                    macro("Protein", t.protein)
+                    macro("Carbs", t.carbs)
+                    macro("Fat", t.fat)
+                }
+                .padding(.top, 4)
             }
-            .padding(.top, 4)
             Divider().overlay(Theme.track)
             HStack {
                 Text(isToday ? "Burned so far (estimate)" : "Burned (estimate)").foregroundColor(Theme.dim)
@@ -900,6 +906,18 @@ struct MealsSettingsView: View {
                 Text("Turning Meals off hides the Meals tab. Turning Water off hides water and stops its reminders. What you logged is kept.")
             }
             Section {
+                NavigationLink {
+                    MacroSettingsView()
+                } label: {
+                    HStack {
+                        Text("Macro targets")
+                        Spacer()
+                        Text(store.settings.macrosAutomatic ? "Automatic" : store.settings.split.map(String.init).joined(separator: " / "))
+                            .foregroundColor(Theme.dim)
+                    }
+                }
+            }
+            Section {
                 Picker("Aiming to", selection: Binding(get: { store.settings.aim }, set: { v in store.settings.aim = v; Task { await reload() } })) {
                     ForEach(MealAim.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -985,5 +1003,179 @@ struct KeyHelp: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Macros
+
+private let proteinColor = Theme.orange
+private let carbsColor = Theme.blue
+private let fatColor = Color(hex: 0xC7A6E8)
+
+/// Protein, carbs and fat eaten against the day's targets, as rings, a split ring or bars.
+struct MacroView: View {
+    let eaten: Nutrients
+    let targets: MacroTargets
+    let style: MacroStyle
+    let goal: Int
+
+    private var items: [(String, Double, Int, Color)] {
+        [("Protein", eaten.protein, targets.protein, proteinColor), ("Carbs", eaten.carbs, targets.carbs, carbsColor), ("Fat", eaten.fat, targets.fat, fatColor)]
+    }
+
+    var body: some View {
+        switch style {
+        case .rings:
+            HStack {
+                ForEach(items.indices, id: \.self) { i in
+                    let item = items[i]
+                    VStack(spacing: 4) {
+                        ZStack {
+                            Circle().stroke(item.3.opacity(0.18), lineWidth: 8)
+                            Circle().trim(from: 0, to: fraction(item.1, item.2)).stroke(item.3, style: StrokeStyle(lineWidth: 8, lineCap: .round)).rotationEffect(.degrees(-90))
+                            Text("\(Int(item.1.rounded()))g").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.text)
+                        }
+                        .frame(width: 70, height: 70)
+                        Text(item.0).font(.system(size: 12)).foregroundColor(Theme.dim)
+                        Text("of \(item.2)g").font(.system(size: 11)).foregroundColor(Theme.dim)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(item.0), \(Int(item.1.rounded())) of \(item.2) grams")
+                }
+            }
+        case .split:
+            HStack(spacing: 14) {
+                SplitRing(items: items).frame(width: 130, height: 130)
+                    .overlay(VStack(spacing: 0) {
+                        Text(Int(eaten.kcal).formatted()).font(Theme.display(20)).foregroundColor(Theme.text)
+                        Text("of \(goal.formatted()) cal").font(.system(size: 11)).foregroundColor(Theme.dim)
+                    })
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(items.indices, id: \.self) { i in legendRow(items[i]) }
+                }
+            }
+        case .bars:
+            VStack(spacing: 8) {
+                ForEach(items.indices, id: \.self) { i in
+                    let item = items[i]
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(item.0).foregroundColor(Theme.text)
+                            Spacer()
+                            Text("\(Int(item.1.rounded()))").fontWeight(.semibold).foregroundColor(Theme.text) + Text(" of \(item.2) g").foregroundColor(Theme.dim)
+                        }
+                        .font(.system(size: 13))
+                        Bar(fraction: fraction(item.1, item.2), color: item.3, height: 8)
+                    }
+                }
+            }
+        }
+    }
+
+    private func legendRow(_ item: (String, Double, Int, Color)) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(item.3).frame(width: 8, height: 8)
+            Text(item.0).foregroundColor(Theme.text)
+            Spacer()
+            Text("\(Int(item.1.rounded()))").fontWeight(.semibold).foregroundColor(Theme.text) + Text(" of \(item.2) g").foregroundColor(Theme.dim)
+        }
+        .font(.system(size: 13))
+    }
+
+    private func fraction(_ v: Double, _ t: Int) -> CGFloat { t > 0 ? CGFloat(min(1, v / Double(t))) : 0 }
+}
+
+/// One ring split by each macro's share of target calories; each slice fills as it's eaten.
+private struct SplitRing: View {
+    let items: [(String, Double, Int, Color)]
+
+    var body: some View {
+        let cals = items.map { Double($0.2) * ($0.0 == "Fat" ? 9 : 4) }
+        let total = max(1, cals.reduce(0, +))
+        let gap = 0.012
+        ZStack {
+            ForEach(0..<items.count, id: \.self) { i in
+                let start = cals[..<i].reduce(0, +) / total
+                let span = cals[i] / total
+                let filled = items[i].2 > 0 ? min(1, items[i].1 / Double(items[i].2)) : 0
+                Circle().trim(from: start + gap, to: start + span - gap).stroke(items[i].3.opacity(0.22), style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                Circle().trim(from: start + gap, to: start + gap + (span - 2 * gap) * filled).stroke(items[i].3, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+            }
+        }
+        .rotationEffect(.degrees(-90))
+        .padding(7)
+        .accessibilityHidden(true)
+    }
+}
+
+struct MacroSettingsView: View {
+    @ObservedObject private var store = MealStore.shared
+
+    private func share(_ i: Int) -> Binding<Double> {
+        Binding(get: { Double(store.settings.split[i]) }, set: { v in store.settings.split = MacroMath.adjust(store.settings.split, index: i, to: Int(v.rounded())) })
+    }
+
+    var body: some View {
+        let goal = MealStore.goal(settings: store.settings, appSettings: SettingsStore.shared.value).calories
+        let t = MacroMath.targets(calories: goal, weightKg: SettingsStore.shared.value.weightKg, settings: store.settings)
+        Form {
+            Section {
+                Picker("How targets are set", selection: $store.settings.macrosAutomatic) {
+                    Text("Automatic").tag(true)
+                    Text("My own split").tag(false)
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("Automatic: protein from your weight and aim (more when losing weight, to protect muscle), fat about 30% of calories, carbs the rest. Updates when your weight, aim or calorie goal changes.")
+            }
+            Section {
+                if store.settings.macrosAutomatic {
+                    targetRow("Protein", t.protein, proteinColor)
+                    targetRow("Carbs", t.carbs, carbsColor)
+                    targetRow("Fat", t.fat, fatColor)
+                } else {
+                    slider("Protein", 0, t.protein, proteinColor)
+                    slider("Carbs", 1, t.carbs, carbsColor)
+                    slider("Fat", 2, t.fat, fatColor)
+                }
+            } header: {
+                Text("Today's targets, from \(goal.formatted()) cal")
+            } footer: {
+                Text(store.settings.macrosAutomatic ? "Starting points only, not medical advice. Anyone with a health condition should follow their doctor's targets."
+                     : "Drag to set percentages; they always add up to 100. Grams follow your calorie goal.")
+            }
+            Section("Chart style") {
+                Picker("Chart style", selection: $store.settings.macroStyle) {
+                    ForEach(MacroStyle.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle("Macro targets")
+    }
+
+    private func targetRow(_ name: String, _ g: Int, _ c: Color) -> some View {
+        HStack {
+            Circle().fill(c).frame(width: 8, height: 8)
+            Text(name)
+            Spacer()
+            Text("\(g) g").foregroundColor(Theme.dim)
+        }
+    }
+
+    private func slider(_ name: String, _ i: Int, _ g: Int, _ c: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Circle().fill(c).frame(width: 8, height: 8)
+                Text(name)
+                Spacer()
+                Text("\(store.settings.split[i])%").fontWeight(.semibold) + Text("  about \(g) g").foregroundColor(Theme.dim)
+            }
+            Slider(value: share(i), in: 5...90, step: 1).tint(c)
+                .accessibilityLabel("\(name) percent")
+        }
     }
 }

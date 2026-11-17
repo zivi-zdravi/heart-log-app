@@ -104,12 +104,88 @@ enum MealAim: String, Codable, CaseIterable {
     }
 }
 
+enum MacroStyle: String, Codable, CaseIterable {
+    case rings = "Rings", split = "Split ring", bars = "Bars"
+}
+
 struct MealSettings: Codable, Equatable {
     var setUp = false
     var aim: MealAim = .maintain
     var automatic = true
     var manualGoal: Int = 2000
     var avoid: [String] = []
+    /// Macro targets: automatic from weight and aim, or the person's own split.
+    var macrosAutomatic = true
+    /// Own split in percent of calories: protein, carbs, fat. Always adds up to 100.
+    var split: [Int] = [25, 45, 30]
+    var macroStyle: MacroStyle = .rings
+
+    init() {}
+
+    // Missing keys fall back to defaults, so adding settings never wipes old ones.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = MealSettings()
+        setUp = try c.decodeIfPresent(Bool.self, forKey: .setUp) ?? d.setUp
+        aim = (try? c.decodeIfPresent(MealAim.self, forKey: .aim)) ?? d.aim
+        automatic = try c.decodeIfPresent(Bool.self, forKey: .automatic) ?? d.automatic
+        manualGoal = try c.decodeIfPresent(Int.self, forKey: .manualGoal) ?? d.manualGoal
+        avoid = try c.decodeIfPresent([String].self, forKey: .avoid) ?? d.avoid
+        macrosAutomatic = try c.decodeIfPresent(Bool.self, forKey: .macrosAutomatic) ?? d.macrosAutomatic
+        let sp = try c.decodeIfPresent([Int].self, forKey: .split) ?? d.split
+        split = sp.count == 3 && sp.reduce(0, +) == 100 ? sp : d.split
+        macroStyle = (try? c.decodeIfPresent(MacroStyle.self, forKey: .macroStyle)) ?? d.macroStyle
+    }
+}
+
+/// Daily macro targets in grams.
+struct MacroTargets: Equatable {
+    var protein: Int
+    var carbs: Int
+    var fat: Int
+}
+
+enum MacroMath {
+    /// Automatic: protein from body weight and aim (1.6 g/kg when losing or gaining, 1.2 when maintaining),
+    /// fat about 30% of calories, carbs the rest. Without a weight, protein is 25% of calories.
+    static func automatic(calories: Int, weightKg: Double?, aim: MealAim) -> MacroTargets {
+        let cal = Double(max(0, calories))
+        let perKg: Double = aim == .maintain ? 1.2 : 1.6
+        var protein = weightKg.map { $0 * perKg } ?? cal * 0.25 / 4
+        protein = min(protein, cal * 0.4 / 4)
+        let fat = cal * 0.30 / 9
+        let carbs = max(0, (cal - protein * 4 - fat * 9) / 4)
+        return MacroTargets(protein: Int(protein.rounded()), carbs: Int(carbs.rounded()), fat: Int(fat.rounded()))
+    }
+
+    /// Own split: percent of calories for protein, carbs and fat.
+    static func fromSplit(calories: Int, split: [Int]) -> MacroTargets {
+        let cal = Double(max(0, calories))
+        let s = split.count == 3 ? split : [25, 45, 30]
+        return MacroTargets(protein: Int((cal * Double(s[0]) / 100 / 4).rounded()),
+                            carbs: Int((cal * Double(s[1]) / 100 / 4).rounded()),
+                            fat: Int((cal * Double(s[2]) / 100 / 9).rounded()))
+    }
+
+    static func targets(calories: Int, weightKg: Double?, settings: MealSettings) -> MacroTargets {
+        settings.macrosAutomatic ? automatic(calories: calories, weightKg: weightKg, aim: settings.aim)
+            : fromSplit(calories: calories, split: settings.split)
+    }
+
+    /// Moves one share and spreads the difference over the other two so the total stays 100.
+    static func adjust(_ split: [Int], index: Int, to value: Int) -> [Int] {
+        var s = split.count == 3 ? split : [25, 45, 30]
+        let v = min(90, max(5, value))
+        let others = [0, 1, 2].filter { $0 != index }
+        var rest = 100 - v
+        let a = s[others[0]], b = s[others[1]]
+        let first = a + b == 0 ? rest / 2 : Int((Double(rest) * Double(a) / Double(a + b)).rounded())
+        s[index] = v
+        s[others[0]] = max(5, min(rest - 5, first))
+        rest -= s[others[0]]
+        s[others[1]] = rest
+        return s
+    }
 }
 
 enum MealMath {
