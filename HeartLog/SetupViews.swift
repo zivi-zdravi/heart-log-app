@@ -437,7 +437,7 @@ struct WelcomeBurst: View {
             return
         }
         withAnimation(.easeInOut(duration: 0.9)) { ring = 1; dot = 96 }
-        after(0.8) { withAnimation(.easeOut(duration: 0.3)) { nameShown = true } }
+        withAnimation(.easeOut(duration: 0.6)) { nameShown = true }
         after(1.3) { withAnimation(.easeIn(duration: 0.45)) { flood = true } }
         after(1.75) { withAnimation(.easeOut(duration: 0.3)) { gone = true } }
         after(2.1) { finish() }
