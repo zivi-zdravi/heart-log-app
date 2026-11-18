@@ -59,10 +59,6 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                GeometryReader { g in
-                    Color.clear.preference(key: ScrollTopKey.self, value: g.frame(in: .named("todayScroll")).minY)
-                }
-                .frame(height: 0)
                 morningSky
                 VStack(alignment: .leading, spacing: 12) {
                     header
@@ -88,13 +84,22 @@ struct TodayView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 24)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: ScrollTopKey.self, value: g.frame(in: .named("todayScroll")).minY)
+                })
             }
             .coordinateSpace(name: "todayScroll")
             .onPreferenceChange(ScrollTopKey.self) { y in
-                if skyVisible && y < -24 { withAnimation(.easeOut(duration: 0.3)) { skyVisible = false } }
+                // y is where the cards start. Remember it on the first reading,
+                // then hide the sky once they've moved up.
+                if skyTop == nil { skyTop = y }
+                if let top = skyTop, top - y > 24 { hideSky() }
             }
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
+            .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { v in
+                if v.translation.height < -20 && abs(v.translation.height) > abs(v.translation.width) { hideSky() }
+            })
             .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
                 guard abs(v.translation.width) > 60, abs(v.translation.width) > abs(v.translation.height) * 2 else { return }
                 move(v.translation.width > 0 ? -1 : 1)
@@ -103,6 +108,8 @@ struct TodayView: View {
         .task(id: day) { await reload() }
         .onAppear(perform: checkMorning)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in checkMorning() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in skyVisible = false }
+        .onDisappear { skyVisible = false }
         .sheet(isPresented: $asking) { AskView(range: .week) }
         .followToday($day)
         .onAppear { Task { await reload() } }
@@ -138,6 +145,12 @@ struct TodayView: View {
 
     @AppStorage("morningSkyDay") private var morningSkyDay = ""
     @State private var skyVisible = false
+    @State private var skyTop: CGFloat?
+
+    private func hideSky() {
+        guard skyVisible else { return }
+        withAnimation(.easeOut(duration: 0.3)) { skyVisible = false }
+    }
 
     private var greetingText: String {
         DetailMath.greeting(hour: Calendar.current.component(.hour, from: Date()), name: settings.value.profileName, serbian: settings.value.serbianGreeting)
@@ -148,6 +161,7 @@ struct TodayView: View {
         let key = DayEngine.shared.key(Date())
         guard isToday, settings.value.morningSummary, Calendar.current.component(.hour, from: Date()) < 12, morningSkyDay != key else { return }
         morningSkyDay = key
+        skyTop = nil
         skyVisible = true
     }
 

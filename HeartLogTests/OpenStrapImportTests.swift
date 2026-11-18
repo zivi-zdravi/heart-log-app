@@ -166,6 +166,23 @@ final class PhoneUseTests: XCTestCase {
         XCTAssertEqual(n.inBedMin, 670) // still in bed until 670
     }
 
+    func testYourOwnWakeTimeTrimsTheStages() {
+        // Like night 3: the band scored lying awake after 410 as REM and light.
+        let st = [s(0, 20, .wake), s(20, 400, .light), s(400, 410, .wake), s(410, 560, .rem)]
+        let out = StageMath.clip(st, onset: 20 * m, wake: 400 * m)
+        XCTAssertEqual(out.map(\.kind), [.wake, .light, .wake])
+        let n = StageMath.night(out)!
+        XCTAssertEqual(n.end, 400 * m)
+        XCTAssertEqual(n.asleepMin, 380)
+        XCTAssertEqual(n.inBedMin, 560) // still in bed until you got up
+    }
+
+    func testYourOwnBedtimeTrimsTheStart() {
+        let out = StageMath.clip([s(0, 300, .light)], onset: 60 * m, wake: 300 * m)
+        XCTAssertEqual(out.map(\.kind), [.wake, .light])
+        XCTAssertEqual(StageMath.night(out)!.asleepMin, 240)
+    }
+
     func testPhoneOutsideTheNightChangesNothing() {
         let st = [s(0, 300, .light)]
         XCTAssertEqual(PhoneUse.apply([span(400, 420)], to: st), st)

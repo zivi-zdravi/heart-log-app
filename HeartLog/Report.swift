@@ -101,6 +101,9 @@ enum Report {
             out.append("Largest gaps:")
             biggest.forEach { out.append("  \(clock($0.from)) to \(clock($0.to)) (\(($0.to - $0.from) / 1000) sec)") }
         }
+        let uses = PhoneUse.spans(events.map { ($0.t, $0.type) }.filter { $0.1 == "unlocked" || $0.1 == "locked" })
+        out.append("Phone unlocked: \(uses.isEmpty ? "never" : "\(uses.count) times")")
+        uses.suffix(40).forEach { out.append("  \(clock($0.start)) to \(clock($0.end))") }
         out.append("Readings per hour:")
         perHour.keys.sorted().forEach { out.append("  \(clock($0 * 3_600_000)): \(perHour[$0] ?? 0)") }
         return out.joined(separator: "\n")

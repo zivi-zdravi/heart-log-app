@@ -203,7 +203,16 @@ final class DayEngine {
         var r = DayRecord(day: k, source: "app")
         let night = samples.filter { $0.t < s0 + 14 * hour }
         if let o = Overrides.all()[k] {
-            r.sleep = SleepMath.period(night, onset: o.onset, wake: o.wake)
+            var p = SleepMath.period(night, onset: o.onset, wake: o.wake)
+            // With band stages, your times trim the stages, so asleep time
+            // still leaves out the wake-ups the band saw.
+            if let raw = BandHistoryStore.shared.day(k)?.stages,
+               case let st = StageMath.clip(PhoneUse.apply(PhoneUse.read(from: s0 - 6 * hour, to: s0 + 14 * hour), to: raw), onset: o.onset, wake: o.wake),
+               let w = StageMath.night(st) {
+                p.asleepMin = w.asleepMin
+                p.inBedMin = w.inBedMin
+            }
+            r.sleep = p
         } else if let raw = BandHistoryStore.shared.day(k)?.stages,
                   case let st = PhoneUse.apply(PhoneUse.read(from: s0 - 6 * hour, to: s0 + 14 * hour), to: raw),
                   let w = StageMath.night(st) {

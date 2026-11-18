@@ -70,9 +70,12 @@ struct SleepView: View {
     @ObservedObject private var settings = SettingsStore.shared
 
     @State private var phone: [PhoneUse.Span] = []
+    @State private var adjusted: Overrides.Window?
     private var stages: [BandStage]? {
         guard let raw = band?.stages, !raw.isEmpty else { return nil }
-        return PhoneUse.apply(phone, to: raw)
+        let st = PhoneUse.apply(phone, to: raw)
+        if let o = adjusted { return StageMath.clip(st, onset: o.onset, wake: o.wake) }
+        return st
     }
 
     private var isToday: Bool { Calendar.current.isDateInToday(day) }
@@ -142,7 +145,8 @@ struct SleepView: View {
         if stages != nil {
             let from = band?.source == "openstrap" ? " This night's stages were imported from OpenStrap, and its bedtime and wake time come from them."
                 : band?.source == "zdravlje" ? " Zdravlje worked out this night's stages itself from the band's own record, and its bedtime and wake time come from them." : ""
-            let onPhone = phone.isEmpty ? "" : " Time you spent on your phone counts as awake."
+            let onPhone = adjusted != nil ? " You set this night's bedtime and wake time yourself, so time outside them counts as awake."
+                : phone.isEmpty ? "" : " Time you spent on your phone counts as awake."
             return "Stages are estimated from your band's heart rate, beat timing and movement, so they show as ranges instead of exact minutes. Scores are estimates.\(onPhone)\(from)"
         }
         return "No sleep stages for this night yet. For now they come from OpenStrap: export from OpenStrap, then in Zdravlje go to Settings, Import OpenStrap export. Once Zdravlje downloads from the band itself, they'll show on their own. Scores are estimates."
@@ -180,6 +184,7 @@ struct SleepView: View {
         samples = s
         band = past.band
         phone = phoneSpans
+        adjusted = Overrides.all()[DayEngine.shared.key(d)]
         pastAsleep = past.asleep
         pastDeep = past.deep
         pastResp = past.resp

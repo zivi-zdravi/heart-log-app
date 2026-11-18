@@ -191,6 +191,26 @@ enum StageMath {
         return Night(start: first.start, end: finalSleep.end, asleepMin: asleep, inBedMin: Double(last.end - first.start) / 60_000)
     }
 
+    /// Applies a bedtime and wake time you set yourself: anything before you
+    /// fell asleep or after you woke becomes awake, so the chart, the totals
+    /// and the scores all follow your times.
+    static func clip(_ stages: [BandStage], onset: Int64, wake: Int64) -> [BandStage] {
+        guard wake > onset else { return stages }
+        var out: [BandStage] = []
+        for b in stages {
+            var cuts = [b.start, b.end]
+            if onset > b.start && onset < b.end { cuts.append(onset) }
+            if wake > b.start && wake < b.end { cuts.append(wake) }
+            cuts = Array(Set(cuts)).sorted()
+            for i in 0..<(cuts.count - 1) {
+                let a = cuts[i], z = cuts[i + 1]
+                let outside = z <= onset || a >= wake
+                out.append(BandStage(start: a, end: z, kind: outside ? .wake : b.kind))
+            }
+        }
+        return OpenStrapImport.merged(out)
+    }
+
     /// Minutes awake between falling asleep and the final wake, leaving out
     /// time before first sleep and after the last.
     static func awakeDuringSleep(_ stages: [BandStage]) -> Double {
