@@ -101,11 +101,36 @@ enum Report {
             out.append("Largest gaps:")
             biggest.forEach { out.append("  \(clock($0.from)) to \(clock($0.to)) (\(($0.to - $0.from) / 1000) sec)") }
         }
-        let uses = PhoneUse.spans(events.map { ($0.t, $0.type) }.filter { $0.1 == "unlocked" || $0.1 == "locked" })
-        out.append("Phone unlocked: \(uses.isEmpty ? "never" : "\(uses.count) times")")
-        uses.suffix(40).forEach { out.append("  \(clock($0.start)) to \(clock($0.end))") }
+        // Phone use at night (9 PM to 9 AM), grouped by night, with unlocks a
+        // minute or less apart joined into one.
+        let dayName = DateFormatter()
+        dayName.dateFormat = "EEE MMM d"
+        func dayOf(_ ms: Int64) -> String { dayName.string(from: Date(timeIntervalSince1970: Double(ms) / 1000)) }
+        var uses: [PhoneUse.Span] = []
+        for u in PhoneUse.spans(events.map { ($0.t, $0.type) }.filter { $0.1 == "unlocked" || $0.1 == "locked" }) {
+            if let last = uses.last, u.start - last.end <= 60_000 { uses[uses.count - 1].end = max(last.end, u.end) } else { uses.append(u) }
+        }
+        var nights: [(String, [PhoneUse.Span])] = []
+        for u in uses {
+            let h = cal.component(.hour, from: Date(timeIntervalSince1970: Double(u.start) / 1000))
+            guard h >= 21 || h < 9 else { continue }
+            let nightStart = h >= 21 ? u.start : u.start - 12 * 3_600_000
+            let name = "Night of \(dayOf(nightStart))"
+            if nights.last?.0 == name { nights[nights.count - 1].1.append(u) } else { nights.append((name, [u])) }
+        }
+        out.append("Phone use at night, 9 PM to 9 AM:")
+        if nights.isEmpty { out.append("  none") }
+        for (name, list) in nights.suffix(4) {
+            out.append("  \(name):")
+            list.forEach { out.append("    \(clock($0.start)) to \(clock($0.end))") }
+        }
         out.append("Readings per hour:")
-        perHour.keys.sorted().forEach { out.append("  \(clock($0 * 3_600_000)): \(perHour[$0] ?? 0)") }
+        var lastDay = ""
+        perHour.keys.sorted().forEach { h in
+            let d = dayOf(h * 3_600_000)
+            if d != lastDay { out.append("  \(d)"); lastDay = d }
+            out.append("    \(clock(h * 3_600_000)): \(perHour[h] ?? 0)")
+        }
         return out.joined(separator: "\n")
     }
 }
