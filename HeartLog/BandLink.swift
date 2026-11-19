@@ -521,7 +521,12 @@ final class BandLink: ObservableObject {
 
     private func watchSync(seconds: Double, reason: String) {
         syncWatch?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.endSync(.failed(reason)) }
+        let w = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            // Going quiet after confirmed batches just means it's done.
+            if !self.testRun && self.batches > 0 && self.burst.counted == 0 { self.finishedDownload() }
+            else { self.endSync(.failed(reason)) }
+        }
         syncWatch = w
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: w)
     }
