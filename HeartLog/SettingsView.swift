@@ -115,7 +115,25 @@ private extension View {
 
 struct BandDetailsView: View {
     @ObservedObject private var r = Recorder.shared
+    @ObservedObject private var link = BandLink.shared
     @State private var confirmStop = false
+
+    private var isBusy: Bool {
+        switch link.syncStatus {
+        case .asking, .receiving: return true
+        default: return false
+        }
+    }
+
+    private var syncText: String {
+        switch link.syncStatus {
+        case .idle: return "Not tested yet"
+        case .asking: return "Asking the band"
+        case .receiving(let n): return "Receiving, \(n.formatted()) seconds"
+        case .done(let t): return t
+        case .failed(let t): return t
+        }
+    }
 
     var body: some View {
         List {
@@ -141,6 +159,18 @@ struct BandDetailsView: View {
                 }
             } footer: {
                 Text("Recording keeps going with the phone locked. Swiping the app away stops it. The low battery alert is in Notifications.")
+            }
+            if link.generation != nil {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Download from band").foregroundColor(Theme.dim)
+                        Text(syncText).font(.system(size: 15))
+                    }
+                    Button("Test download") { link.testDownload() }
+                        .disabled(!link.ready || isBusy)
+                } footer: {
+                    Text("A test asks the band for its stored history and checks that every piece arrives. It never tells the band to erase anything, so OpenStrap still gets everything too.")
+                }
             }
         }
         .settingsPage("Band")

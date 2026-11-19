@@ -90,3 +90,46 @@ enum BandHistoryMarker: UInt8 {
         self.init(rawValue: inner[2])
     }
 }
+
+/// The band's end-of-batch marker: how many packets it says it sent, and the
+/// 8-byte token that an ACK echoes back (which lets the band erase the batch).
+struct BandHistoryEnd: Equatable {
+    var expected: Int
+    var token: [UInt8]
+
+    init?(_ inner: [UInt8]) {
+        guard inner.count >= 21, inner[0] == BandPacketType.metadata, inner[2] == BandHistoryMarker.end.rawValue else { return nil }
+        expected = Int(UInt32(inner[9]) | UInt32(inner[10]) << 8 | UInt32(inner[11]) << 16 | UInt32(inner[12]) << 24)
+        token = Array(inner[13..<21])
+    }
+}
+
+/// One history batch as Zdravlje received it, so it can tell whether every
+/// packet arrived before it would ever let the band erase anything.
+struct BandBurst: Equatable {
+    /// Packets that count toward the band's own total (history records,
+    /// events, console logs, battery-pack packets; never the markers).
+    var counted = 0
+    /// Frames that failed their checks. Any at all means no ACK.
+    var bad = 0
+    var seconds = 0
+    var first: Int64?
+    var last: Int64?
+
+    static let countedTypes: Set<UInt8> = [0x2F, 0x30, 0x32, 0x35, 0x36, 0x37]
+
+    mutating func add(_ frame: BandFrame) {
+        guard frame.valid else { bad += 1; return }
+        guard Self.countedTypes.contains(frame.packetType) else { return }
+        counted += 1
+        if let s = BandSecond.decode(frame.inner) {
+            seconds += 1
+            first = min(first ?? s.t, s.t)
+            last = max(last ?? s.t, s.t)
+        }
+    }
+
+    /// Safe to ACK: nothing failed and at least as many packets arrived as the
+    /// band says it sent (extra re-sent packets are normal).
+    func complete(_ end: BandHistoryEnd) -> Bool { bad == 0 && counted >= end.expected }
+}

@@ -36,6 +36,15 @@ final class BandLink: ObservableObject {
     @Published private(set) var lastAnswer: Date?
     @Published private(set) var alarmStatus: AlarmStatus = .idle
 
+    enum SyncStatus: Equatable {
+        case idle
+        case asking
+        case receiving(Int)
+        case done(String)
+        case failed(String)
+    }
+    @Published private(set) var syncStatus: SyncStatus = .idle
+
     /// Recorder supplies its event logger so link activity lands in the session log.
     var log: ((String, String) -> Void)?
 
@@ -64,6 +73,15 @@ final class BandLink: ObservableObject {
     private var lastTick = Date.distantPast
     private var lastAlarmAttempt = Date.distantPast
     private var alarmInFlight = false
+    // History download. In a test run Zdravlje never sends the ACK, so the
+    // band keeps everything; it stops the transfer after the first batch.
+    private var syncing = false
+    private var burst = BandBurst()
+    private var syncWatch: DispatchWorkItem?
+    /// Last time history frames arrived that Zdravlje didn't ask for (another
+    /// app downloading). Two downloaders at once can wedge the band.
+    private var lastForeignData = Date.distantPast
+    private var ignoreReofferUntil = Date.distantPast
 
     var ready: Bool { state == .answering && writeCharacteristic != nil && peripheral?.state == .connected }
 
@@ -120,7 +138,9 @@ final class BandLink: ObservableObject {
     func didReceive(_ data: Data, from c: CBCharacteristic) {
         if c.uuid == dataUUID {
             guard let r = dataReassembler else { return }
-            for frame in r.feed([UInt8](data)) where frame.decodable {
+            for frame in r.feed([UInt8](data)) {
+                if syncing { syncFrame(frame) } else if Date() > ignoreReofferUntil { lastForeignData = Date() }
+                guard frame.decodable else { continue }
                 if let sec = BandSecond.decode(frame.inner) {
                     BandCapture.shared.add(sec, offset: clockOffset ?? 0)
                 } else if let m = BandHistoryMarker(frame.inner) {
@@ -166,6 +186,11 @@ final class BandLink: ObservableObject {
         eventsUUID = nil
         pending.removeAll()
         alarmInFlight = false
+        if syncing {
+            syncing = false
+            syncWatch?.cancel()
+            syncStatus = .failed("The band disconnected partway. Nothing was erased.")
+        }
         if state != .notFound { state = .opening }
     }
 
@@ -392,6 +417,86 @@ final class BandLink: ObservableObject {
             self.alarmInFlight = false
             if self.alarmStatus == .sending { self.alarmStatus = .failed("The band didn't answer. It will try again.") }
         }
+    }
+
+    // MARK: History download (test run)
+
+    /// Asks the band for its stored history and checks the first batch, but
+    /// never tells the band it may erase it.
+    func testDownload() {
+        guard let g = generation, ready else {
+            syncStatus = .failed("The band isn't connected right now.")
+            return
+        }
+        guard !syncing else { return }
+        guard Date().timeIntervalSince(lastForeignData) > 120 else {
+            syncStatus = .failed("Another app is downloading from the band right now. Try again in a few minutes.")
+            return
+        }
+        syncing = true
+        burst = BandBurst()
+        syncStatus = .asking
+        log?("band_sync", "test start")
+        send(BandOpcode.enterHighFreqSync, BandCommand.enterHighFreqSync(sequence: sequence, generation: g)) { _ in }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, self.syncing else { return }
+            self.send(BandOpcode.sendHistoricalData, BandCommand.sendHistoricalData(sequence: self.sequence, generation: g)) { _ in }
+        }
+        watchSync(seconds: 20, reason: "The band didn't send anything.")
+    }
+
+    private func watchSync(seconds: Double, reason: String) {
+        syncWatch?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.endSync(.failed(reason)) }
+        syncWatch = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: w)
+    }
+
+    private func syncFrame(_ frame: BandFrame) {
+        if frame.valid, frame.packetType == BandPacketType.metadata {
+            if let end = BandHistoryEnd(frame.inner) {
+                let f = DateFormatter()
+                f.dateFormat = "MMM d, h:mm a"
+                func when(_ t: Int64?) -> String {
+                    t.map { f.string(from: Date(timeIntervalSince1970: Double($0 - Int64(clockOffset ?? 0)))) } ?? "?"
+                }
+                let ok = burst.complete(end)
+                let text = "\(burst.seconds) seconds, \(when(burst.first)) to \(when(burst.last)). "
+                    + "\(burst.counted) of \(end.expected) packets arrived, \(burst.bad) damaged. "
+                    + (ok ? "This batch would be safe to confirm." : "This batch would NOT be confirmed.")
+                log?("band_sync", "test batch expected \(end.expected) got \(burst.counted) bad \(burst.bad) seconds \(burst.seconds)")
+                endSync(.done(text))
+                return
+            }
+            if BandHistoryMarker(frame.inner) == .start { burst = BandBurst() }
+            if BandHistoryMarker(frame.inner) == .complete {
+                endSync(.done(burst.seconds == 0 ? "The band had nothing new to send." : "The band finished early after \(burst.seconds) seconds."))
+                return
+            }
+            return
+        }
+        burst.add(frame)
+        syncStatus = .receiving(burst.seconds)
+        watchSync(seconds: 60, reason: "The band stopped sending partway. Nothing was erased.")
+    }
+
+    private func endSync(_ status: SyncStatus) {
+        guard syncing else { return }
+        syncing = false
+        syncWatch?.cancel()
+        syncStatus = status
+        // Stop the transfer without confirming it, so the band keeps it all.
+        if let g = generation {
+            send(BandOpcode.abortHistoricalTransmits, BandCommand.abortHistoricalTransmits(sequence: sequence, generation: g)) { _ in }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                guard let self else { return }
+                self.send(BandOpcode.exitHighFreqSync, BandCommand.exitHighFreqSync(sequence: self.sequence, generation: g)) { _ in }
+            }
+        }
+        // The band re-offers the unconfirmed batch for a while; don't treat
+        // that as another app.
+        lastForeignData = .distantPast
+        ignoreReofferUntil = Date().addingTimeInterval(180)
     }
 
     // MARK: Sending

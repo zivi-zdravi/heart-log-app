@@ -196,4 +196,34 @@ final class BandNightTests: XCTestCase {
         // Over 3 hours apart: skipped.
         XCTAssertEqual(BandNight.steps(counter([(0, 0), (Int64(4 * 3600), 900)])), 0)
     }
+
+    func testHistoryEndToken() {
+        var inner = [UInt8](repeating: 0, count: 24)
+        inner[0] = 0x31; inner[2] = 2
+        inner[9] = 0x10; inner[10] = 0x01 // 272 packets
+        for i in 13..<21 { inner[i] = UInt8(i) }
+        let end = BandHistoryEnd(inner)!
+        XCTAssertEqual(end.expected, 272)
+        XCTAssertEqual(end.token, Array(13...20).map { UInt8($0) })
+        inner[2] = 3
+        XCTAssertNil(BandHistoryEnd(inner))
+    }
+
+    func testBurstOnlyCompleteWhenEverythingArrived() {
+        var inner = [UInt8](repeating: 0, count: 24)
+        inner[0] = 0x31; inner[2] = 2; inner[9] = 2
+        let end = BandHistoryEnd(inner)!
+        let good = BandFrame(inner: [0x2F, 0, 0], headerCRCOK: true, payloadCRCOK: true, revisionOK: true)
+        let damaged = BandFrame(inner: [0x2F, 0, 0], headerCRCOK: true, payloadCRCOK: false, revisionOK: true)
+        let marker = BandFrame(inner: [0x31, 0, 1], headerCRCOK: true, payloadCRCOK: true, revisionOK: true)
+        var b = BandBurst()
+        b.add(good); b.add(marker)
+        XCTAssertFalse(b.complete(end)) // one short
+        b.add(good)
+        XCTAssertTrue(b.complete(end))
+        b.add(good)
+        XCTAssertTrue(b.complete(end)) // a re-sent extra is fine
+        b.add(damaged)
+        XCTAssertFalse(b.complete(end)) // anything damaged: never confirm
+    }
 }
