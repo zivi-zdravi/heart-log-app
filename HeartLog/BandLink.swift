@@ -20,6 +20,7 @@ final class BandLink: ObservableObject {
         case waiting     // commands sent, waiting for replies
         case answering   // the band replied to us
         case noAnswer    // channel open but nothing came back in time
+        case pairingLost // the phone and band no longer share a pairing key
     }
 
     enum AlarmStatus: Equatable {
@@ -132,7 +133,7 @@ final class BandLink: ObservableObject {
         guard c.uuid == notifyUUID else { return }
         if let error {
             log?("band_link", "subscribe failed: \(error.localizedDescription)")
-            state = .noAnswer
+            state = Self.isPairingError(error) ? .pairingLost : .noAnswer
             return
         }
         if c.isNotifying { startHandshake() }
@@ -203,6 +204,22 @@ final class BandLink: ObservableObject {
     }
 
     /// Call when discovery finished and no private service was found.
+    /// Errors that mean the phone's pairing with the band is gone (for example
+    /// another app removed the band from the phone), so commands can't work
+    /// until the band is paired again.
+    static func isPairingError(_ error: Error) -> Bool {
+        let e = error as NSError
+        if e.domain == CBATTErrorDomain { return [5, 8, 15].contains(e.code) } // authentication, authorization, encryption
+        if e.domain == CBErrorDomain { return [14, 15].contains(e.code) }      // peer removed pairing, encryption timed out
+        return false
+    }
+
+    func markPairingLost(_ error: Error?) {
+        guard let error, Self.isPairingError(error) else { return }
+        log?("band_link", "pairing lost: \(error.localizedDescription)")
+        state = .pairingLost
+    }
+
     func markNotFound() {
         if generation == nil { state = .notFound }
     }
@@ -622,6 +639,7 @@ extension BandLink.State {
         case .waiting: return "Waiting for the band"
         case .answering: return "Connected"
         case .noAnswer: return "No answer"
+        case .pairingLost: return "Pairing lost"
         }
     }
 }

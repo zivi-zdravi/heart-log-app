@@ -225,6 +225,7 @@ extension Recorder: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
         log("connect_failed", error?.localizedDescription ?? "")
+        BandLink.shared.markPairingLost(error)
         if recording { status = "Retrying"; central.connect(p, options: nil) }
     }
 
@@ -232,6 +233,7 @@ extension Recorder: CBCentralManagerDelegate {
         guard recording else { return }
         log("disconnected", error?.localizedDescription ?? "")
         BandLink.shared.reset()
+        BandLink.shared.markPairingLost(error)
         status = "Waiting for band"
         central.connect(p, options: nil)
     }

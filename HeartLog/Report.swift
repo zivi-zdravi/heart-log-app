@@ -118,6 +118,11 @@ enum Report {
             let name = "Night of \(dayOf(nightStart))"
             if nights.last?.0 == name { nights[nights.count - 1].1.append(u) } else { nights.append((name, [u])) }
         }
+        let linkTypes: Set<String> = ["band_link", "band_sync", "band_clock", "disconnected", "connect_failed", "alarm_set", "alarm_refused", "alarm_fired"]
+        let linkEvents = events.filter { linkTypes.contains($0.type) }.suffix(40)
+        out.append("Band connection messages (latest \(linkEvents.count)):")
+        if linkEvents.isEmpty { out.append("  none") }
+        linkEvents.forEach { out.append("  \(dayOf($0.t)) \(clock($0.t)) \($0.type): \($0.detail)") }
         out.append("Phone use at night, 9 PM to 9 AM:")
         if nights.isEmpty { out.append("  none") }
         for (name, list) in nights.suffix(4) {

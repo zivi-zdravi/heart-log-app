@@ -129,6 +129,7 @@ struct BandDetailsView: View {
     private var syncText: String {
         switch link.syncStatus {
         case .idle:
+            if link.state == .pairingLost { return "The phone lost its pairing with the band. Forget the band in iPhone Settings → Bluetooth, put the band in pairing mode (tap until it flashes blue), then start recording again." }
             if !link.ready { return link.state == .noAnswer ? "The band isn't answering Zdravlje yet. It tries again every 2 minutes, or stop and restart recording." : "Waiting for the band to answer" }
             if let d = link.lastDownload { return "Last download \(d.formatted(date: .omitted, time: .shortened))" }
             return link.downloadOn ? "Waiting for the next download" : "Not tested yet"
