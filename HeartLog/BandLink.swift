@@ -86,6 +86,8 @@ final class BandLink: ObservableObject {
     private var testRun = true
     private var totalSeconds = 0
     private var batches = 0
+    private var batchesBeforeRound = 0
+    private var rounds = 0
     private var failedBatches = 0
     private var lastConfirmedToken: [UInt8]?
     private var lastSyncAttempt = Date.distantPast
@@ -483,7 +485,7 @@ final class BandLink: ObservableObject {
     /// switched on and it's been 30 minutes.
     private func downloadIfDue() {
         guard downloadOn, !syncing else { return }
-        if let last = lastDownload, Date().timeIntervalSince(last) < 30 * 60 { return }
+        if let last = lastDownload, Date().timeIntervalSince(last) < 15 * 60 { return }
         if Date().timeIntervalSince(lastSyncAttempt) < 5 * 60 { return }
         startSync(test: false)
     }
@@ -503,6 +505,8 @@ final class BandLink: ObservableObject {
         burst = BandBurst()
         totalSeconds = 0
         batches = 0
+        batchesBeforeRound = 0
+        rounds = 0
         failedBatches = 0
         lastSyncAttempt = Date()
         syncStatus = .asking
@@ -541,6 +545,14 @@ final class BandLink: ObservableObject {
             if BandHistoryMarker(frame.inner) == .complete {
                 if testRun {
                     endSync(.done(burst.seconds == 0 ? "The band had nothing new to send." : "The band finished early after \(burst.seconds) seconds."))
+                } else if batches > batchesBeforeRound && rounds < 60, let g = generation {
+                    // The band hands over a little per request. If this round
+                    // brought something, ask again until it has nothing left.
+                    rounds += 1
+                    batchesBeforeRound = batches
+                    burst = BandBurst()
+                    send(BandOpcode.sendHistoricalData, BandCommand.sendHistoricalData(sequence: sequence, generation: g)) { _ in }
+                    watchSync(seconds: 20, reason: "The band stopped sending. Everything confirmed so far is saved.")
                 } else {
                     finishedDownload()
                 }
@@ -597,8 +609,9 @@ final class BandLink: ObservableObject {
     private func finishedDownload() {
         lastDownload = Date()
         UserDefaults.standard.set(lastDownload, forKey: "bandLastDownload")
-        let mins = totalSeconds / 60
-        endSync(.done(batches == 0 ? "Up to date." : "Downloaded \(mins / 60)h \(mins % 60)m in \(batches) batches."))
+        let h = totalSeconds / 3600, m = (totalSeconds % 3600) / 60, sec = totalSeconds % 60
+        let length = h > 0 ? "\(h)h \(m)m" : m > 0 ? "\(m)m \(sec)s" : "\(sec)s"
+        endSync(.done(batches == 0 ? "Up to date." : "Downloaded \(length) of data in \(batches) \(batches == 1 ? "batch" : "batches"). Up to date."))
         BandCapture.shared.saveNow(stage: true) {}
     }
 
