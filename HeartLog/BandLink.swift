@@ -88,6 +88,7 @@ final class BandLink: ObservableObject {
     private var failedBatches = 0
     private var lastConfirmedToken: [UInt8]?
     private var lastSyncAttempt = Date.distantPast
+    private var lastHandshakeRetry = Date.distantPast
 
     var ready: Bool { state == .answering && writeCharacteristic != nil && peripheral?.state == .connected }
 
@@ -212,6 +213,14 @@ final class BandLink: ObservableObject {
         NotifyEngine.shared.bandHeard()
         guard Date().timeIntervalSince(lastTick) >= 60 else { return }
         lastTick = Date()
+        // The band can miss the hello after a relaunch in the background; ask
+        // again every couple of minutes instead of giving up for good.
+        if state == .noAnswer, writeCharacteristic != nil, peripheral?.state == .connected,
+           Date().timeIntervalSince(lastHandshakeRetry) > 120 {
+            lastHandshakeRetry = Date()
+            log?("band_link", "retry hello")
+            startHandshake()
+        }
         planAlarm(force: false)
         downloadIfDue()
         NotifyEngine.shared.tick()

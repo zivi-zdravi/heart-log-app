@@ -129,6 +129,7 @@ struct BandDetailsView: View {
     private var syncText: String {
         switch link.syncStatus {
         case .idle:
+            if !link.ready { return link.state == .noAnswer ? "The band isn't answering Zdravlje yet. It tries again every 2 minutes, or stop and restart recording." : "Waiting for the band to answer" }
             if let d = link.lastDownload { return "Last download \(d.formatted(date: .omitted, time: .shortened))" }
             return link.downloadOn ? "Waiting for the next download" : "Not tested yet"
         case .asking: return "Asking the band"
