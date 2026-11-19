@@ -69,11 +69,6 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("Settings")
-        .confirmationDialog("Let Zdravlje download from the band?", isPresented: $confirmDownload, titleVisibility: .visible) {
-            Button("Turn on") { link.downloadOn = true }
-        } message: {
-            Text("Only do this after exporting from OpenStrap and turning off its Bluetooth. Once Zdravlje confirms a download, the band erases it, and no other app can get it.")
-        }
         .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop", role: .destructive) { r.stop() }
         } message: {
@@ -193,6 +188,11 @@ struct BandDetailsView: View {
             }
         }
         .settingsPage("Band")
+        .confirmationDialog("Let Zdravlje download from the band?", isPresented: $confirmDownload, titleVisibility: .visible) {
+            Button("Turn on") { link.downloadOn = true }
+        } message: {
+            Text("Only do this after exporting from OpenStrap and turning off its Bluetooth. Once Zdravlje confirms a download, the band erases it, and no other app can get it.")
+        }
         .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop", role: .destructive) { r.stop() }
         } message: {
