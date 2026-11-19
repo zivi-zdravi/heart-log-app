@@ -185,7 +185,7 @@ struct BandDetailsView: View {
                 } footer: {
                     Text(link.downloadOn
                          ? "Zdravlje downloads from the band every 30 minutes while connected, saves each batch, then tells the band it can erase it. Only batches where every piece arrived are confirmed."
-                         : "A test asks the band for its stored history and checks that every piece arrives. It never tells the band to erase anything, so OpenStrap still gets everything too. Automatic downloading unlocks after a test brings in at least 10 minutes intact.")
+                         : "A test asks the band for its stored history and checks that every piece arrives. It never tells the band to erase anything, so OpenStrap still gets everything too. Automatic downloading unlocks after a test batch arrives intact.")
                 }
             }
         }

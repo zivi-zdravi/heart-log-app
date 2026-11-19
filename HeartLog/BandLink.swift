@@ -560,7 +560,7 @@ final class BandLink: ObservableObject {
             let text = "\(burst.seconds) seconds, \(when(burst.first)) to \(when(burst.last)). "
                 + "\(burst.counted) of \(end.expected) packets arrived, \(burst.bad) damaged. "
                 + (ok ? "This batch would be safe to confirm." : "This batch would NOT be confirmed.")
-            if ok && burst.seconds >= 600 { bigTestPassed = true }
+            if ok && burst.seconds > 0 { bigTestPassed = true }
             endSync(.done(text))
             return
         }
