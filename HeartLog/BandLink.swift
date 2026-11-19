@@ -82,6 +82,12 @@ final class BandLink: ObservableObject {
     /// app downloading). Two downloaders at once can wedge the band.
     private var lastForeignData = Date.distantPast
     private var ignoreReofferUntil = Date.distantPast
+    private var testRun = true
+    private var totalSeconds = 0
+    private var batches = 0
+    private var failedBatches = 0
+    private var lastConfirmedToken: [UInt8]?
+    private var lastSyncAttempt = Date.distantPast
 
     var ready: Bool { state == .answering && writeCharacteristic != nil && peripheral?.state == .connected }
 
@@ -168,6 +174,7 @@ final class BandLink: ObservableObject {
                 state = .answering
                 planAlarm(force: true)
                 enableEventsIfNeeded()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.downloadIfDue() }
             }
             handler(reply)
         }
@@ -206,6 +213,7 @@ final class BandLink: ObservableObject {
         guard Date().timeIntervalSince(lastTick) >= 60 else { return }
         lastTick = Date()
         planAlarm(force: false)
+        downloadIfDue()
         NotifyEngine.shared.tick()
     }
 
@@ -419,11 +427,42 @@ final class BandLink: ObservableObject {
         }
     }
 
-    // MARK: History download (test run)
+    // MARK: History download
+
+    /// Real downloading is off until Katie retires OpenStrap: only one app may
+    /// ever confirm batches, because a confirmed batch is erased from the band.
+    @Published var downloadOn: Bool = UserDefaults.standard.bool(forKey: "bandDownloadOn") {
+        didSet {
+            UserDefaults.standard.set(downloadOn, forKey: "bandDownloadOn")
+            if downloadOn { download() }
+        }
+    }
+    /// A test that brought in at least 10 minutes in one intact batch.
+    @Published private(set) var bigTestPassed: Bool = UserDefaults.standard.bool(forKey: "bandBigTestPassed") {
+        didSet { UserDefaults.standard.set(bigTestPassed, forKey: "bandBigTestPassed") }
+    }
+    @Published private(set) var lastDownload: Date? = UserDefaults.standard.object(forKey: "bandLastDownload") as? Date
 
     /// Asks the band for its stored history and checks the first batch, but
     /// never tells the band it may erase it.
-    func testDownload() {
+    func testDownload() { startSync(test: true) }
+
+    /// Downloads and confirms every intact batch. Only when switched on.
+    func download() {
+        guard downloadOn else { return }
+        startSync(test: false)
+    }
+
+    /// Called when the link comes up and about once a minute: downloads when
+    /// switched on and it's been 30 minutes.
+    private func downloadIfDue() {
+        guard downloadOn, !syncing else { return }
+        if let last = lastDownload, Date().timeIntervalSince(last) < 30 * 60 { return }
+        if Date().timeIntervalSince(lastSyncAttempt) < 5 * 60 { return }
+        startSync(test: false)
+    }
+
+    private func startSync(test: Bool) {
         guard let g = generation, ready else {
             syncStatus = .failed("The band isn't connected right now.")
             return
@@ -434,9 +473,14 @@ final class BandLink: ObservableObject {
             return
         }
         syncing = true
+        testRun = test
         burst = BandBurst()
+        totalSeconds = 0
+        batches = 0
+        failedBatches = 0
+        lastSyncAttempt = Date()
         syncStatus = .asking
-        log?("band_sync", "test start")
+        log?("band_sync", test ? "test start" : "start")
         send(BandOpcode.enterHighFreqSync, BandCommand.enterHighFreqSync(sequence: sequence, generation: g)) { _ in }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self, self.syncing else { return }
@@ -452,32 +496,80 @@ final class BandLink: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: w)
     }
 
+    private func when(_ t: Int64?) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, h:mm a"
+        return t.map { f.string(from: Date(timeIntervalSince1970: Double($0 - Int64(clockOffset ?? 0)))) } ?? "?"
+    }
+
     private func syncFrame(_ frame: BandFrame) {
         if frame.valid, frame.packetType == BandPacketType.metadata {
             if let end = BandHistoryEnd(frame.inner) {
-                let f = DateFormatter()
-                f.dateFormat = "MMM d, h:mm a"
-                func when(_ t: Int64?) -> String {
-                    t.map { f.string(from: Date(timeIntervalSince1970: Double($0 - Int64(clockOffset ?? 0)))) } ?? "?"
-                }
-                let ok = burst.complete(end)
-                let text = "\(burst.seconds) seconds, \(when(burst.first)) to \(when(burst.last)). "
-                    + "\(burst.counted) of \(end.expected) packets arrived, \(burst.bad) damaged. "
-                    + (ok ? "This batch would be safe to confirm." : "This batch would NOT be confirmed.")
-                log?("band_sync", "test batch expected \(end.expected) got \(burst.counted) bad \(burst.bad) seconds \(burst.seconds)")
-                endSync(.done(text))
+                // The band re-offers a batch until it hears back; one we
+                // already confirmed arrives again with nothing new before it.
+                if end.token == lastConfirmedToken && burst.counted == 0 { return }
+                batchEnded(end)
                 return
             }
             if BandHistoryMarker(frame.inner) == .start { burst = BandBurst() }
             if BandHistoryMarker(frame.inner) == .complete {
-                endSync(.done(burst.seconds == 0 ? "The band had nothing new to send." : "The band finished early after \(burst.seconds) seconds."))
+                if testRun {
+                    endSync(.done(burst.seconds == 0 ? "The band had nothing new to send." : "The band finished early after \(burst.seconds) seconds."))
+                } else {
+                    finishedDownload()
+                }
                 return
             }
             return
         }
         burst.add(frame)
-        syncStatus = .receiving(burst.seconds)
-        watchSync(seconds: 60, reason: "The band stopped sending partway. Nothing was erased.")
+        syncStatus = .receiving(totalSeconds + burst.seconds)
+        watchSync(seconds: 60, reason: "The band stopped sending partway. Nothing unconfirmed was erased.")
+    }
+
+    private func batchEnded(_ end: BandHistoryEnd) {
+        let ok = burst.complete(end)
+        log?("band_sync", "\(testRun ? "test " : "")batch expected \(end.expected) got \(burst.counted) bad \(burst.bad) seconds \(burst.seconds)")
+        if testRun {
+            let text = "\(burst.seconds) seconds, \(when(burst.first)) to \(when(burst.last)). "
+                + "\(burst.counted) of \(end.expected) packets arrived, \(burst.bad) damaged. "
+                + (ok ? "This batch would be safe to confirm." : "This batch would NOT be confirmed.")
+            if ok && burst.seconds >= 600 { bigTestPassed = true }
+            endSync(.done(text))
+            return
+        }
+        guard ok, let g = generation else {
+            // Never confirm a batch with anything missing: stop, and the band
+            // offers it again next time.
+            failedBatches += 1
+            endSync(.failed("A batch arrived incomplete (\(burst.counted) of \(end.expected)), so it wasn't confirmed. It will try again."))
+            return
+        }
+        let token = end.token
+        let seconds = burst.seconds
+        // Save to disk first, then confirm: the band may erase it right away.
+        BandCapture.shared.saveNow { [weak self] in
+            guard let self, self.syncing else { return }
+            guard let frame = try? BandCommand.historyResultOK(sequence: self.sequence, token: token, generation: g) else {
+                self.endSync(.failed("Couldn't build the confirmation."))
+                return
+            }
+            self.send(BandOpcode.historicalDataResult, frame) { _ in }
+            self.lastConfirmedToken = token
+            self.totalSeconds += seconds
+            self.batches += 1
+            self.burst = BandBurst()
+            self.syncStatus = .receiving(self.totalSeconds)
+            self.watchSync(seconds: 60, reason: "The band stopped sending. Everything confirmed so far is saved.")
+        }
+    }
+
+    private func finishedDownload() {
+        lastDownload = Date()
+        UserDefaults.standard.set(lastDownload, forKey: "bandLastDownload")
+        let mins = totalSeconds / 60
+        endSync(.done(batches == 0 ? "Up to date." : "Downloaded \(mins / 60)h \(mins % 60)m in \(batches) batches."))
+        BandCapture.shared.saveNow(stage: true) {}
     }
 
     private func endSync(_ status: SyncStatus) {
@@ -485,16 +577,20 @@ final class BandLink: ObservableObject {
         syncing = false
         syncWatch?.cancel()
         syncStatus = status
-        // Stop the transfer without confirming it, so the band keeps it all.
         if let g = generation {
-            send(BandOpcode.abortHistoricalTransmits, BandCommand.abortHistoricalTransmits(sequence: sequence, generation: g)) { _ in }
+            // A finished download only needs to leave the fast mode; anything
+            // else stops the transfer without confirming the open batch.
+            if case .done = status, !testRun {} else {
+                send(BandOpcode.abortHistoricalTransmits, BandCommand.abortHistoricalTransmits(sequence: sequence, generation: g)) { _ in }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 guard let self else { return }
                 self.send(BandOpcode.exitHighFreqSync, BandCommand.exitHighFreqSync(sequence: self.sequence, generation: g)) { _ in }
             }
         }
-        // The band re-offers the unconfirmed batch for a while; don't treat
-        // that as another app.
+        if totalSeconds > 0 { BandCapture.shared.saveNow(stage: true) {} }
+        // The band re-offers an unconfirmed batch for a while; that isn't
+        // another app downloading.
         lastForeignData = .distantPast
         ignoreReofferUntil = Date().addingTimeInterval(180)
     }

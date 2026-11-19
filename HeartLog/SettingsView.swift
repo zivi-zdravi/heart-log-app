@@ -69,6 +69,11 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle("Settings")
+        .confirmationDialog("Let Zdravlje download from the band?", isPresented: $confirmDownload, titleVisibility: .visible) {
+            Button("Turn on") { link.downloadOn = true }
+        } message: {
+            Text("Only do this after exporting from OpenStrap and turning off its Bluetooth. Once Zdravlje confirms a download, the band erases it, and no other app can get it.")
+        }
         .confirmationDialog("Stop recording?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop", role: .destructive) { r.stop() }
         } message: {
@@ -117,6 +122,7 @@ struct BandDetailsView: View {
     @ObservedObject private var r = Recorder.shared
     @ObservedObject private var link = BandLink.shared
     @State private var confirmStop = false
+    @State private var confirmDownload = false
 
     private var isBusy: Bool {
         switch link.syncStatus {
@@ -127,7 +133,9 @@ struct BandDetailsView: View {
 
     private var syncText: String {
         switch link.syncStatus {
-        case .idle: return "Not tested yet"
+        case .idle:
+            if let d = link.lastDownload { return "Last download \(d.formatted(date: .omitted, time: .shortened))" }
+            return link.downloadOn ? "Waiting for the next download" : "Not tested yet"
         case .asking: return "Asking the band"
         case .receiving(let n): return "Receiving, \(n.formatted()) seconds"
         case .done(let t): return t
@@ -166,10 +174,21 @@ struct BandDetailsView: View {
                         Text("Download from band").foregroundColor(Theme.dim)
                         Text(syncText).font(.system(size: 15))
                     }
-                    Button("Test download") { link.testDownload() }
-                        .disabled(!link.ready || isBusy)
+                    if link.downloadOn {
+                        Button("Download now") { link.download() }
+                            .disabled(!link.ready || isBusy)
+                    } else {
+                        Button("Test download") { link.testDownload() }
+                            .disabled(!link.ready || isBusy)
+                    }
+                    Toggle("Download automatically", isOn: Binding(get: { link.downloadOn }, set: { on in
+                        if on { confirmDownload = true } else { link.downloadOn = false }
+                    }))
+                    .disabled(!link.bigTestPassed && !link.downloadOn)
                 } footer: {
-                    Text("A test asks the band for its stored history and checks that every piece arrives. It never tells the band to erase anything, so OpenStrap still gets everything too.")
+                    Text(link.downloadOn
+                         ? "Zdravlje downloads from the band every 30 minutes while connected, saves each batch, then tells the band it can erase it. Only batches where every piece arrived are confirmed."
+                         : "A test asks the band for its stored history and checks that every piece arrives. It never tells the band to erase anything, so OpenStrap still gets everything too. Automatic downloading unlocks after a test brings in at least 10 minutes intact.")
                 }
             }
         }

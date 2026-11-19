@@ -52,6 +52,16 @@ final class BandCapture: ObservableObject {
         DispatchQueue.main.async { self.lastData = Date() }
     }
 
+    /// Writes everything received so far to disk, then calls back on the main
+    /// queue. Used before confirming a batch, which lets the band erase it.
+    func saveNow(stage: Bool = false, _ done: @escaping () -> Void) {
+        queue.async {
+            self.flushWork?.cancel()
+            self.flush(stage: stage)
+            DispatchQueue.main.async(execute: done)
+        }
+    }
+
     /// End of a batch or of the whole transfer: save and stage now.
     func marker(_ m: BandHistoryMarker) {
         guard m != .start else { return }
