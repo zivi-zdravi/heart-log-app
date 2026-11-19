@@ -565,7 +565,7 @@ final class BandLink: ObservableObject {
             if BandHistoryMarker(frame.inner) == .complete {
                 if testRun {
                     endSync(.done(burst.seconds == 0 ? "The band had nothing new to send." : "The band finished early after \(burst.seconds) seconds."))
-                } else if batches > batchesBeforeRound && rounds < 60, let g = generation {
+                } else if batches > batchesBeforeRound && rounds < 2000, let g = generation {
                     // The band hands over a little per request. If this round
                     // brought something, ask again until it has nothing left.
                     rounds += 1

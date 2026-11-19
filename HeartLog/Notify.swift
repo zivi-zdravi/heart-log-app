@@ -22,7 +22,7 @@ enum NotifyRoute: String, Codable, CaseIterable {
 struct NotifySettings: Codable, Equatable {
     /// How many notifications are switched on, for the Settings summary.
     var onCount: Int {
-        [lowBattery, charger, goneQuiet, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water, breathingHigh]
+        [lowBattery, charger, goneQuiet, appClosed, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water, breathingHigh]
             .filter { $0 != .off }.count
     }
 
@@ -30,6 +30,7 @@ struct NotifySettings: Codable, Equatable {
     var lowBatteryAt = 20
     var charger: NotifyRoute = .off
     var goneQuiet: NotifyRoute = .phone
+    var appClosed: NotifyRoute = .phone
     var alarmNotSaved: NotifyRoute = .phone
     var noAlarmCheckIn: NotifyRoute = .off
     var windDown: NotifyRoute = .band
@@ -55,6 +56,7 @@ struct NotifySettings: Codable, Equatable {
         lowBatteryAt = try c.decodeIfPresent(Int.self, forKey: .lowBatteryAt) ?? d.lowBatteryAt
         charger = try c.decodeIfPresent(NotifyRoute.self, forKey: .charger) ?? d.charger
         goneQuiet = try c.decodeIfPresent(NotifyRoute.self, forKey: .goneQuiet) ?? d.goneQuiet
+        appClosed = try c.decodeIfPresent(NotifyRoute.self, forKey: .appClosed) ?? d.appClosed
         alarmNotSaved = try c.decodeIfPresent(NotifyRoute.self, forKey: .alarmNotSaved) ?? d.alarmNotSaved
         noAlarmCheckIn = try c.decodeIfPresent(NotifyRoute.self, forKey: .noAlarmCheckIn) ?? d.noAlarmCheckIn
         windDown = try c.decodeIfPresent(NotifyRoute.self, forKey: .windDown) ?? d.windDown
@@ -70,7 +72,7 @@ struct NotifySettings: Codable, Equatable {
     }
 
     var anyPhone: Bool {
-        [lowBattery, charger, goneQuiet, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water, breathingHigh].contains { $0.toPhone }
+        [lowBattery, charger, goneQuiet, appClosed, alarmNotSaved, noAlarmCheckIn, windDown, stepGoal, possibleActivity, water, breathingHigh].contains { $0.toPhone }
     }
 }
 

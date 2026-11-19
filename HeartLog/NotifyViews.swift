@@ -61,6 +61,8 @@ struct NotificationsView: View {
                 row("On the charger", "When you put the band on or take it off the charger", \.charger)
                 row("Gone quiet", "When Zdravlje stops hearing the band for 30 minutes",
                     note: "Phone only: the band can't buzz when it isn't connected.", \.goneQuiet, phoneOnly: true)
+                row("Zdravlje closed", "When Zdravlje is swiped away while recording, and again an hour later if it's still closed",
+                    note: "Phone only. The band keeps everything, and opening Zdravlje picks up where it left off.", \.appClosed, phoneOnly: true)
             }
             Section("Alarm") {
                 row("Alarm not saved", "When the band never confirms tonight's alarm",

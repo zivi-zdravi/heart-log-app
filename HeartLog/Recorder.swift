@@ -1,3 +1,4 @@
+import UserNotifications
 import CoreBluetooth
 import Foundation
 import UIKit
@@ -66,6 +67,7 @@ final class Recorder: NSObject, ObservableObject {
 
     func didLaunch(background: Bool) {
         PhoneUse.appOnScreen = !background
+        ClosedReminder.cancel()
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionRestoreIdentifierKey: "heartlog.central"])
         if let s = session {
@@ -80,7 +82,10 @@ final class Recorder: NSObject, ObservableObject {
         nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in self?.log("foreground") }
         nc.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification, object: nil, queue: .main) { [weak self] _ in self?.log("locked") }
         nc.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main) { [weak self] _ in self?.log("unlocked") }
-        nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in self?.log("terminating") }
+        nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.log("terminating")
+            if self?.recording == true { ClosedReminder.schedule() }
+        }
         BandLink.shared.log = { [weak self] type, detail in self?.log(type, detail) }
     }
 
@@ -309,5 +314,29 @@ extension Recorder: CBPeripheralDelegate {
 
     func peripheral(_ p: CBPeripheral, didWriteValueFor c: CBCharacteristic, error: Error?) {
         if let error { log("band_write_failed", error.localizedDescription) }
+    }
+}
+
+
+/// When Zdravlje is swiped away mid-recording it can't send anything later,
+/// so it schedules its reminders on the way out and clears them on launch.
+enum ClosedReminder {
+    static let ids = ["closed-now", "closed-later"]
+
+    static func schedule() {
+        guard NotifyStore.shared.settings.appClosed != .off else { return }
+        let center = UNUserNotificationCenter.current()
+        for (id, delay) in [(ids[0], 2.0), (ids[1], 3600.0)] {
+            let c = UNMutableNotificationContent()
+            c.title = "Zdravlje was closed"
+            c.body = "Open Zdravlje to keep recording and downloading from your band. The band keeps everything until then."
+            c.sound = .default
+            center.add(UNNotificationRequest(identifier: id, content: c,
+                                             trigger: UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)))
+        }
+    }
+
+    static func cancel() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
     }
 }
