@@ -241,11 +241,14 @@ struct TodayView: View {
                     .font(.system(size: 13)).foregroundColor(Theme.dim)
                 Spacer()
                 if rec.recording {
-                    HStack(spacing: 6) {
-                        Circle().fill(Theme.green).frame(width: 8, height: 8)
-                        Text("Recording")
+                    VStack(alignment: .trailing, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Circle().fill(Theme.green).frame(width: 8, height: 8)
+                            Text("Recording")
+                        }
+                        .font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.green)
+                        SyncLine()
                     }
-                    .font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.green)
                 } else {
                     NavigationLink { SettingsView() } label: {
                         HStack(spacing: 6) {
@@ -399,4 +402,43 @@ struct TodayView: View {
 private struct ScrollTopKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+
+/// Under "Recording": "Syncing" while a band download runs, otherwise when the
+/// last one finished. Orange once it's been over an hour, since downloads
+/// normally happen every 15 minutes.
+struct SyncLine: View {
+    @ObservedObject private var link = BandLink.shared
+
+    private var syncing: Bool {
+        switch link.syncStatus {
+        case .asking, .receiving: return true
+        default: return false
+        }
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { ctx in
+            if syncing {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("Syncing")
+                }
+                .font(.system(size: 12)).foregroundColor(Theme.orange)
+            } else if let d = link.lastDownload {
+                Text("Synced " + Self.when(d, now: ctx.date))
+                    .font(.system(size: 12))
+                    .foregroundColor(ctx.date.timeIntervalSince(d) > 3600 ? Theme.orange : Theme.dim)
+            }
+        }
+    }
+
+    static func when(_ d: Date, now: Date) -> String {
+        let cal = Calendar.current
+        let time = d.formatted(date: .omitted, time: .shortened)
+        if cal.isDate(d, inSameDayAs: now) { return time }
+        if let y = cal.date(byAdding: .day, value: -1, to: now), cal.isDate(d, inSameDayAs: y) { return "yesterday \(time)" }
+        return d.formatted(.dateTime.month(.abbreviated).day()) + ", " + time
+    }
 }
