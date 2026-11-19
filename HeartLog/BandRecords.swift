@@ -131,5 +131,13 @@ struct BandBurst: Equatable {
 
     /// Safe to ACK: nothing failed and at least as many packets arrived as the
     /// band says it sent (extra re-sent packets are normal).
-    func complete(_ end: BandHistoryEnd) -> Bool { bad == 0 && counted >= end.expected }
+    ///
+    /// `slack` lets a batch that keeps coming up a packet or two short (often
+    /// a packet the band also sends on another channel) through after a few
+    /// tries, so one stubborn packet can't stall downloading for good. Damaged
+    /// frames still never pass.
+    func complete(_ end: BandHistoryEnd, slack: Int = 0) -> Bool { bad == 0 && counted + slack >= end.expected }
+
+    /// How many packets may be missing on this try at the same batch.
+    static func slack(afterFailedTries tries: Int) -> Int { tries >= 3 ? 2 : 0 }
 }

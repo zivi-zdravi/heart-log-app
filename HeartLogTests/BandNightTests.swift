@@ -226,4 +226,19 @@ final class BandNightTests: XCTestCase {
         b.add(damaged)
         XCTAssertFalse(b.complete(end)) // anything damaged: never confirm
     }
+
+    func testStubbornShortBatchGetsSlackAfterThreeTries() {
+        XCTAssertEqual(BandBurst.slack(afterFailedTries: 0), 0)
+        XCTAssertEqual(BandBurst.slack(afterFailedTries: 2), 0)
+        XCTAssertEqual(BandBurst.slack(afterFailedTries: 3), 2)
+        var inner = [UInt8](repeating: 0, count: 24)
+        inner[0] = 0x31; inner[2] = 2; inner[9] = 3
+        let end = BandHistoryEnd(inner)!
+        var b = BandBurst()
+        b.add(BandFrame(inner: [0x2F, 0, 0], headerCRCOK: true, payloadCRCOK: true, revisionOK: true))
+        XCTAssertFalse(b.complete(end))
+        XCTAssertTrue(b.complete(end, slack: 2))
+        b.add(BandFrame(inner: [0x2F, 0, 0], headerCRCOK: true, payloadCRCOK: false, revisionOK: true))
+        XCTAssertFalse(b.complete(end, slack: 2)) // damaged never passes
+    }
 }

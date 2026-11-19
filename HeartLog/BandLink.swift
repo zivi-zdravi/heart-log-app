@@ -554,7 +554,9 @@ final class BandLink: ObservableObject {
     }
 
     private func batchEnded(_ end: BandHistoryEnd) {
-        let ok = burst.complete(end)
+        let key = "bandBatchTries-" + end.token.map { String(format: "%02x", $0) }.joined()
+        let tries = UserDefaults.standard.integer(forKey: key)
+        let ok = burst.complete(end, slack: testRun ? 0 : BandBurst.slack(afterFailedTries: tries))
         log?("band_sync", "\(testRun ? "test " : "")batch expected \(end.expected) got \(burst.counted) bad \(burst.bad) seconds \(burst.seconds)")
         if testRun {
             let text = "\(burst.seconds) seconds, \(when(burst.first)) to \(when(burst.last)). "
@@ -568,6 +570,7 @@ final class BandLink: ObservableObject {
             // Never confirm a batch with anything missing: stop, and the band
             // offers it again next time.
             failedBatches += 1
+            UserDefaults.standard.set(tries + 1, forKey: key)
             endSync(.failed("A batch arrived incomplete (\(burst.counted) of \(end.expected)), so it wasn't confirmed. It will try again."))
             return
         }
@@ -581,6 +584,7 @@ final class BandLink: ObservableObject {
                 return
             }
             self.send(BandOpcode.historicalDataResult, frame) { _ in }
+            UserDefaults.standard.removeObject(forKey: key)
             self.lastConfirmedToken = token
             self.totalSeconds += seconds
             self.batches += 1
