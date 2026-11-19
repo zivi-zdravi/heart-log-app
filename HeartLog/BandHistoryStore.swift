@@ -68,6 +68,9 @@ final class BandHistoryStore {
 }
 
 extension PhoneUse {
+    /// Set by the recorder: true while the app is open on screen.
+    static var appOnScreen = false
+
     /// Phone use logged by any recording between two times.
     static func read(from: Int64, to: Int64) -> [Span] {
         var events: [(Int64, String)] = []
@@ -76,6 +79,9 @@ extension PhoneUse {
             let csv = (try? String(contentsOf: Store.shared.eventsURL(id), encoding: .utf8)) ?? ""
             events += parse(csv).filter { ($0.1 == "unlocked" || $0.1 == "locked") && $0.0 >= from - 3_600_000 && $0.0 <= to }
         }
-        return spans(events).filter { $0.end > from && $0.start < to }
+        // With the app on screen the phone is unlocked right now, so an unlock
+        // that hasn't locked yet is still going.
+        let now: Int64? = appOnScreen ? Int64(Date().timeIntervalSince1970 * 1000) : nil
+        return spans(events, now: now).filter { $0.end > from && $0.start < to }
     }
 }

@@ -141,6 +141,13 @@ final class PhoneUseTests: XCTestCase {
         XCTAssertEqual(PhoneUse.spans(ev), [span(10, 25), span(50, 80)]) // open-ended unlock capped at 30 min
     }
 
+    func testStillOnThePhoneRunsUntilNow() {
+        // Night 3: unlocked at 4:21 and still on the phone at 7:04, no lock yet.
+        let ev: [(Int64, String)] = [(10 * m, "unlocked")]
+        XCTAssertEqual(PhoneUse.spans(ev, now: 170 * m), [span(10, 170)])
+        XCTAssertEqual(PhoneUse.spans(ev), [span(10, 40)])
+    }
+
     func testParsesEventLines() {
         let ev = PhoneUse.parse("1000,unlocked,\n2000,battery,80\n3000,locked,\nbad line")
         XCTAssertEqual(ev.map(\.0), [1000, 2000, 3000])

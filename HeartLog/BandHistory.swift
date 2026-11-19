@@ -284,8 +284,14 @@ enum PhoneUse {
     /// An unlock with no lock after it is capped at this length.
     static let openEndedCap: Int64 = 30 * 60_000
 
-    /// Pairs each unlock with the next lock. Events are (time ms, type).
-    static func spans(_ events: [(Int64, String)]) -> [Span] {
+    /// An unlock that's still open when you're looking at the app means you're
+    /// on the phone right now, so it runs until now, up to this long.
+    static let stillOpenCap: Int64 = 12 * 60 * 60_000
+
+    /// Pairs each unlock with the next lock. Events are (time ms, type). With
+    /// `now`, a final unlock that hasn't locked yet runs until now instead of
+    /// being cut off after 30 minutes.
+    static func spans(_ events: [(Int64, String)], now: Int64? = nil) -> [Span] {
         var out: [Span] = []
         var open: Int64?
         for (t, type) in events.sorted(by: { $0.0 < $1.0 }) {
@@ -297,7 +303,10 @@ enum PhoneUse {
                 open = nil
             }
         }
-        if let o = open { out.append(Span(start: o, end: o + openEndedCap)) }
+        if let o = open {
+            if let n = now, n > o { out.append(Span(start: o, end: min(n, o + stillOpenCap))) }
+            else { out.append(Span(start: o, end: o + openEndedCap)) }
+        }
         return out
     }
 

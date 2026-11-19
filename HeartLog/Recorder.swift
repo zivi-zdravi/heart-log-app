@@ -61,6 +61,7 @@ final class Recorder: NSObject, ObservableObject {
     private(set) var recent: [Sample] = []
 
     func didLaunch(background: Bool) {
+        PhoneUse.appOnScreen = !background
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionRestoreIdentifierKey: "heartlog.central"])
         if let s = session {
@@ -69,7 +70,9 @@ final class Recorder: NSObject, ObservableObject {
             log("launch", background ? "background" : "foreground")
         }
         let nc = NotificationCenter.default
-        nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.log("background") }
+        nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in PhoneUse.appOnScreen = false; self?.log("background") }
+        nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in PhoneUse.appOnScreen = true }
+        nc.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in PhoneUse.appOnScreen = false }
         nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in self?.log("foreground") }
         nc.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification, object: nil, queue: .main) { [weak self] _ in self?.log("locked") }
         nc.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main) { [weak self] _ in self?.log("unlocked") }
