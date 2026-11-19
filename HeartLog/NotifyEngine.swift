@@ -148,10 +148,20 @@ final class NotifyEngine {
             let body: String
             if on {
                 body = level.map { "Charging started. Battery at \($0)." } ?? "Charging started."
-            } else {
-                body = level.map { "The charger has been taken off. Battery at \($0)." } ?? "The charger has been taken off."
+                self.send(self.settings.charger, id: "charger", title: "Band charging", body: body)
+                return
             }
-            self.send(self.settings.charger, id: "charger", title: on ? "Band charging" : "Charger off", body: body)
+            // The band says "stopped charging" both when the pack comes off and
+            // when the pack runs empty. Only a removal event means it came off.
+            let removed = Recorder.shared.packRemovedAt.map { Date().timeIntervalSince($0) < 30 } ?? false
+            if removed {
+                body = level.map { "The battery pack was taken off. Band at \($0)." } ?? "The battery pack was taken off."
+                self.send(self.settings.charger, id: "charger", title: "Charger off", body: body)
+            } else {
+                body = level.map { "The battery pack stopped charging the band but is still on, so it's probably empty. Band at \($0)." }
+                    ?? "The battery pack stopped charging the band but is still on, so it's probably empty."
+                self.send(self.settings.charger, id: "charger", title: "Battery pack empty?", body: body)
+            }
         }
     }
 

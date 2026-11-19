@@ -241,4 +241,16 @@ final class BandNightTests: XCTestCase {
         b.add(BandFrame(inner: [0x2F, 0, 0], headerCRCOK: true, payloadCRCOK: false, revisionOK: true))
         XCTAssertFalse(b.complete(end, slack: 2)) // damaged never passes
     }
+
+    func testBatteryPackLevelFromEvent() {
+        var inner = [UInt8](repeating: 0, count: 40)
+        inner[0] = 0x30; inner[2] = 109
+        inner[10] = 27
+        inner[35] = 0x8A; inner[36] = 0x02 // 650 tenths
+        XCTAssertEqual(BatteryPackLevel.percent(inner), 65)
+        inner[35] = 0xE9; inner[36] = 0x03 // 1001: not a level
+        XCTAssertNil(BatteryPackLevel.percent(inner))
+        inner[10] = 10
+        XCTAssertNil(BatteryPackLevel.percent(inner))
+    }
 }

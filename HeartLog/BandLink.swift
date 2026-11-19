@@ -313,6 +313,21 @@ final class BandLink: ObservableObject {
             log?("charger", on ? "on" : "off")
             Recorder.shared.setCharging(on)
             if abs(age) < 60 { NotifyEngine.shared.charger(on: on) }
+        case BandEventID.batteryPackInfo:
+            let age = Date().timeIntervalSince1970 - (Double(ts) - Double(clockOffset ?? 0))
+            if abs(age) < 15 * 60, let p = BatteryPackLevel.percent(inner) {
+                log?("pack", "\(p)%")
+                Recorder.shared.packLevel = p
+                Recorder.shared.packAttached = true
+            }
+        case BandEventID.batteryPackOn:
+            log?("pack", "on")
+            Recorder.shared.packAttached = true
+        case BandEventID.batteryPackOff:
+            log?("pack", "off")
+            Recorder.shared.packAttached = false
+            Recorder.shared.packLevel = nil
+            Recorder.shared.packRemovedAt = Date()
         default:
             break
         }
@@ -321,8 +336,8 @@ final class BandLink: ObservableObject {
     /// Asks the band to send its events (double-tap, charger) when a tap
     /// action or the charger notification is on.
     private func enableEventsIfNeeded() {
-        let wanted = WaterStore.shared.tapAction != .nothing || NotifyStore.shared.settings.charger != .off
-        guard ready, let g = generation, wanted else { return }
+        // Always on now: the battery pack's level only arrives as an event.
+        guard ready, let g = generation else { return }
         send(BandOpcode.sendEventPackets, BandCommand.sendEventPackets(sequence: sequence, enabled: true, generation: g)) { [weak self] reply in
             self?.log?("events_on", "status \(reply.status)")
         }

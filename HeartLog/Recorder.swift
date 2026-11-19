@@ -27,6 +27,10 @@ final class Recorder: NSObject, ObservableObject {
     @Published var battery: Int?
     /// From the band's charger events (nil until one arrives, or after a disconnect).
     @Published var charging: Bool?
+    /// The battery pack's own charge, when the band has reported it.
+    @Published var packLevel: Int?
+    @Published var packAttached: Bool?
+    var packRemovedAt: Date?
     @Published var bands: [FoundBand] = []
     @Published var scanning = false
     @Published var recording = false

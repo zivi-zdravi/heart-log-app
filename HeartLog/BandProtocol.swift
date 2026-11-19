@@ -482,7 +482,26 @@ enum BandEventID {
     static let chargingOn: UInt8 = 7
     static let chargingOff: UInt8 = 8
     static let doubleTap: UInt8 = 14
+    static let batteryPackOn: UInt8 = 21
+    static let batteryPackOff: UInt8 = 22
+    /// The battery pack's own charge, in tenths of a percent, at body offset 23.
+    static let batteryPackInfo: UInt8 = 109
     static let alarmSet: UInt8 = 56
     static let alarmFired: UInt8 = 57
     static let alarmAutoDisabled: UInt8 = 59
+}
+
+/// Reads the battery pack's charge from a BATTERY_PACK_INFO (109) event: the
+/// event body starts at inner[12] (its length is at inner[10]) and carries the
+/// level in tenths of a percent at body offset 23. Values past 100% aren't a
+/// level and are dropped.
+enum BatteryPackLevel {
+    static func percent(_ inner: [UInt8]) -> Int? {
+        guard inner.count >= 12 else { return nil }
+        let len = Int(inner[10]) | Int(inner[11]) << 8
+        guard len >= 27, inner.count >= 12 + 25 else { return nil }
+        let raw = Int(inner[35]) | Int(inner[36]) << 8
+        guard raw <= 1000 else { return nil }
+        return Int((Double(raw) / 10).rounded())
+    }
 }

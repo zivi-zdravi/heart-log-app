@@ -144,6 +144,9 @@ struct BandDetailsView: View {
         List {
             Section {
                 settingsRow("Battery", (r.battery.map { "\($0)%" } ?? "Unknown") + (r.charging == true ? ", charging" : ""))
+                if r.packAttached == true || r.packLevel != nil {
+                    settingsRow("Battery pack", r.packLevel.map { "\($0)%" } ?? "On, level not reported yet")
+                }
                 settingsRow("Connection", r.recording ? r.status : "Not recording")
                 if r.recording {
                     Button("Stop recording", role: .destructive) { confirmStop = true }
