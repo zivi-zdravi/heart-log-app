@@ -154,3 +154,48 @@ enum Metrics {
         return bmr * elapsedMinutes + extra
     }
 }
+
+/// Strain through a day, for the Strain page and the Activity card.
+enum StrainMath {
+    struct Point: Equatable {
+        let t: Int64
+        let strain: Double
+    }
+
+    /// Weighted points, before the 0 to 21 squeeze.
+    static func load(_ zoneSeconds: [Double]) -> Double {
+        var load = 0.0
+        for (i, s) in zoneSeconds.enumerated() where i < Metrics.zoneWeights.count { load += s / 60 * Metrics.zoneWeights[i] }
+        return load
+    }
+
+    /// Strain so far at each step from `start` to `end`.
+    static func timeline(_ s: [Sample], bounds: [Int], from start: Int64, to end: Int64, stepMs: Int64 = 900_000) -> [Point] {
+        guard end > start else { return [] }
+        var zones = [Double](repeating: 0, count: 6)
+        var out = [Point(t: start, strain: 0)]
+        var next = start + stepMs
+        var i = 0
+        let sorted = s.filter { $0.t >= start && $0.t <= end }
+        while next <= end + stepMs - 1 {
+            let edge = min(next, end)
+            while i + 1 < sorted.count, sorted[i + 1].t <= edge {
+                let dt = sorted[i + 1].t - sorted[i].t
+                if dt > 0, dt <= Metrics.gapMs, sorted[i].hr > 0 { zones[Metrics.zone(sorted[i].hr, bounds)] += Double(dt) / 1000 }
+                i += 1
+            }
+            out.append(Point(t: edge, strain: Metrics.strain(zoneSeconds: zones)))
+            if edge == end { break }
+            next += stepMs
+        }
+        return out
+    }
+
+    /// Heart rate range of each zone 1 to 5, as text, from the zone bounds.
+    static func zoneRanges(_ bounds: [Int]) -> [String] {
+        (0..<5).map { i in
+            guard i < bounds.count else { return "" }
+            return i + 1 < bounds.count ? "\(bounds[i]) to \(bounds[i + 1] - 1)" : "\(bounds[i])+"
+        }
+    }
+}

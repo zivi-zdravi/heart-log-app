@@ -110,7 +110,7 @@ struct TodayView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in checkMorning() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in skyVisible = false }
         .onDisappear { skyVisible = false }
-        .sheet(isPresented: $asking) { AskView(range: .week) }
+        .sheet(isPresented: $asking) { AskView(range: .week, topic: .today) }
         .followToday($day)
         .onAppear { Task { await reload() } }
         .onReceive(refresh) { _ in
@@ -309,9 +309,7 @@ struct TodayView: View {
     private var scores: some View {
         let r = record
         return Card(accent: Theme.green) {
-            NavigationLink {
-                if let r { RecoveryView(day: day, record: r) }
-            } label: {
+            Button { AppNav.shared.open(.recovery(day)) } label: {
                 HStack(spacing: 14) {
                     RecoveryRing(value: r?.recovery)
                     VStack(alignment: .leading, spacing: 4) {
@@ -333,12 +331,12 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens Sleep")
-                Button { openActivity() } label: {
+                Button { AppNav.shared.open(.strain(day)) } label: {
                     MiniScore(title: "Strain", value: strainValue.map { String(format: "%.1f", $0) } ?? "--", fraction: strainValue.map { $0 / 21 },
                               color: strainColor, note: strainValue == nil ? nil : isToday ? "of 21, so far" : "of 21")
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Opens Activity")
+                .accessibilityHint("Opens Strain, in Activity")
             }
             .padding(.top, 4)
             if let note = strainNote { Text(note).font(.system(size: 12)).foregroundColor(Theme.dim) }
@@ -365,16 +363,16 @@ struct TodayView: View {
         let rhr = r?.rhr ?? summary.resting
         let cal = r?.calories ?? summary.calories
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            NavigationLink { MetricDetailView(kind: .hrv, day: day) } label: {
+            Button { AppNav.shared.open(.hrv(day)) } label: {
                 Tile(title: "HRV, overnight", value: hrv.map { "\(Int($0.rounded())) ms" } ?? "--", note: r?.usualHRV.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.blue, icon: "waveform.path.ecg")
             }
-            NavigationLink { MetricDetailView(kind: .rhr, day: day) } label: {
+            Button { AppNav.shared.open(.rhr(day)) } label: {
                 Tile(title: "Resting heart rate", value: rhr.map { "\($0)" } ?? "--", note: r?.usualRHR.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.orange, icon: "heart")
             }
-            NavigationLink { StepsHistoryView() } label: {
+            Button { AppNav.shared.open(.steps) } label: {
                 Tile(title: "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.note.isEmpty ? nil : steps.note, opens: true, accent: Theme.green, icon: "figure.walk")
             }
-            NavigationLink { CaloriesDetailView(day: day) } label: {
+            Button { AppNav.shared.open(.calories(day)) } label: {
                 Tile(title: "Calories burned", value: cal.map { Int($0).formatted() } ?? "--",
                      note: whoopOr(settings.value.body == nil && cal == nil ? "Add your details in Settings" : "Estimate"), opens: true, accent: Theme.orange, icon: "flame")
             }

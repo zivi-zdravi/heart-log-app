@@ -43,17 +43,22 @@ struct ActivityRow: View {
 
 struct ActivityTab: View {
     @ObservedObject private var acts = ActivityStore.shared
+    @ObservedObject private var nav = AppNav.shared
+    @State private var strain = StrainDay()
+    private var today: Date { Calendar.current.startOfDay(for: Date()) }
     @State private var picking = false
     @State private var showLive = false
     @State private var imported: [ImportedWorkout] = []
     @State private var showAllImported = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $nav.activityPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Activity").font(Theme.display(30)).foregroundColor(Theme.text)
+                    ScreenTitle(title: "Activity", topic: .activity)
                     StepsCard()
+                    StrainCard(day: strain) { nav.activityPath.append(.strain(today)) }
+                    CaloriesCard(day: today) { nav.activityPath.append(.calories(today)) }
                     if let current = acts.current {
                         Button("Return to \(current.type)") { showLive = true }.buttonStyle(TintButton(color: Theme.orange))
                     } else {
@@ -86,7 +91,11 @@ struct ActivityTab: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
+            .appPages()
         }
+        .task { strain = await StrainDay.load(today) }
+        .onAppear { Task { strain = await StrainDay.load(today) } }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in Task { strain = await StrainDay.load(today) } }
         .sheet(isPresented: $picking) {
             TypePicker { type in
                 acts.start(type)

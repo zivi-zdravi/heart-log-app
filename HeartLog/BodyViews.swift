@@ -317,7 +317,7 @@ struct BodyLogCard: View {
 
     var body: some View {
         if store.data.settings.anyOn {
-            NavigationLink { BodyLogView() } label: {
+            Button { AppNav.shared.openLog(body: true) } label: {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "heart.text.square").font(.system(size: 20)).foregroundColor(lilac).padding(.top, 1)
                     VStack(alignment: .leading, spacing: 8) {
@@ -368,12 +368,14 @@ struct BodyLogCard: View {
 // MARK: - Body log screen
 
 struct BodyLogView: View {
+    /// Inside the Log tab: the Log header on top and no navigation bar.
+    var inLog = false
     @ObservedObject private var store = BodyStore.shared
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Body log").font(Theme.display(30)).foregroundColor(Theme.text)
+                if inLog { LogHeader() } else { Text("Body log").font(Theme.display(30)).foregroundColor(Theme.text) }
                 Text("Tap one to log it. Each opens its own screen with history.").font(.system(size: 13)).foregroundColor(Theme.dim)
                 let st = store.data.settings
                 BodyTiles(items: tileItems)
@@ -390,10 +392,11 @@ struct BodyLogView: View {
                     Text("Choose what to track").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.blue).frame(minHeight: 44)
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 20).padding(.top, inLog ? 8 : 20).padding(.bottom, 20)
         }
         .background(Theme.bg.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(inLog ? .hidden : .automatic, for: .navigationBar)
     }
 
     private var tileItems: [BodyTile] {
@@ -1104,5 +1107,47 @@ struct CycleView: View {
             return nil
         }.value
         recoveryNote = note
+    }
+}
+
+
+/// The Log tab: what you enter yourself. Meals and the Body log, with a
+/// switch when both are on.
+struct LogTab: View {
+    @ObservedObject private var nav = AppNav.shared
+    @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var store = BodyStore.shared
+
+    private var showBody: Bool {
+        let meals = settings.value.mealsOn, body = store.data.settings.anyOn
+        if !meals { return true }
+        if !body { return false }
+        return nav.logBody
+    }
+
+    var body: some View {
+        NavigationStack {
+            if showBody { BodyLogView(inLog: true) } else { MealsView(inLog: true) }
+        }
+    }
+}
+
+/// "Log" with the Ask button, and the Meals or Body switch when both are on.
+struct LogHeader: View {
+    @ObservedObject private var nav = AppNav.shared
+    @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var store = BodyStore.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScreenTitle(title: "Log", topic: nav.logBody ? .body : .meals)
+            if settings.value.mealsOn && store.data.settings.anyOn {
+                Picker("Show", selection: $nav.logBody) {
+                    Text("Meals").tag(false)
+                    Text("Body").tag(true)
+                }
+                .pickerStyle(.segmented)
+            }
+        }
     }
 }

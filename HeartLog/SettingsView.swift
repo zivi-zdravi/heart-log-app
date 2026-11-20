@@ -578,11 +578,11 @@ struct RecordingReportsView: View {
 }
 
 struct RootView: View {
-    @State private var tab = 0
+    @ObservedObject private var nav = AppNav.shared
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var bodyStore = BodyStore.shared
     @AppStorage("setupDone") private var setupDone = false
     @State private var welcome = false
-    @State private var sleepDay = Calendar.current.startOfDay(for: Date())
 
     init() {
         // Decided once, on the first launch of this version: a phone already in use skips setup.
@@ -598,21 +598,18 @@ struct RootView: View {
     }
 
     var body: some View {
-        TabView(selection: $tab) {
-            TodayView(openActivity: { tab = 1 }, openMeals: { tab = 4 }, openSleep: { day in
-                sleepDay = day
-                tab = 2
-            })
-                .tabItem { Label("Today", systemImage: "sun.max") }.tag(0)
+        TabView(selection: $nav.tab) {
+            TodayView(openActivity: { nav.openActivity() }, openMeals: { nav.openLog(body: false) }, openSleep: { day in nav.openSleep(day) })
+                .tabItem { Label("Today", systemImage: "sun.max") }.tag(AppTab.today)
             ActivityTab()
-                .tabItem { Label("Activity", systemImage: "figure.walk") }.tag(1)
-            SleepView(day: $sleepDay)
-                .tabItem { Label("Sleep", systemImage: "moon") }.tag(2)
+                .tabItem { Label("Activity", systemImage: "figure.walk") }.tag(AppTab.activity)
+            SleepView(day: $nav.sleepDay)
+                .tabItem { Label("Sleep", systemImage: "moon") }.tag(AppTab.sleep)
             TrendsView()
-                .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(3)
-            if settings.value.mealsOn {
-                MealsView()
-                    .tabItem { Label("Meals", systemImage: "fork.knife") }.tag(4)
+                .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(AppTab.trends)
+            if settings.value.mealsOn || bodyStore.data.settings.anyOn {
+                LogTab()
+                    .tabItem { Label("Log", systemImage: "square.and.pencil") }.tag(AppTab.log)
             }
         }
         .tint(Theme.orange)

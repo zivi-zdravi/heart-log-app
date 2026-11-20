@@ -18,6 +18,8 @@ enum GoalLoader {
 }
 
 struct MealsView: View {
+    /// Inside the Log tab: no stack of its own, and the Log header on top.
+    var inLog = false
     @ObservedObject private var store = MealStore.shared
     @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var goal: MealStore.Goal?
@@ -40,14 +42,31 @@ struct MealsView: View {
     private var defaultSlot: MealSlot { MealSlot.at(hour: Calendar.current.component(.hour, from: Date())) }
 
     var body: some View {
-        NavigationStack {
+        Group {
+            if inLog { page } else { NavigationStack { page } }
+        }
+        .followToday($day)
+        .task(id: day) { await reload() }
+        .onAppear {
+            if !store.settings.setUp { setup = true }
+            Task { await reload() }
+        }
+        .sheet(isPresented: $setup, onDismiss: { Task { await reload() } }) { GoalView(firstTime: true) }
+        .sheet(isPresented: $editingGoal, onDismiss: { Task { await reload() } }) { GoalView(firstTime: false) }
+        .sheet(item: $search) { r in FoodSearchView(day: day, slot: r.slot, favoritesOnly: r.favorites) }
+        .sheet(isPresented: $scanning) { BarcodeView(day: day, slot: defaultSlot) }
+        .fullScreenCover(isPresented: $photographing) { AIPhotoFlow(day: day, slot: defaultSlot) }
+    }
+
+    private var page: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    if inLog { LogHeader() }
                     VStack(alignment: .leading, spacing: 0) {
                         DayChevrons(text: Theme.dayText.string(from: day), canGoForward: !isToday) { by in
                             if let d = Calendar.current.date(byAdding: .day, value: by, to: day), d <= Calendar.current.startOfDay(for: Date()) { day = d }
                         }
-                        Text("Meals").font(Theme.display(30)).foregroundColor(Theme.text)
+                        if !inLog { ScreenTitle(title: "Meals", topic: .meals) }
                     }
                     summary
                     Button { search = SearchRequest(slot: defaultSlot) } label: {
@@ -81,18 +100,6 @@ struct MealsView: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
-        }
-        .followToday($day)
-        .task(id: day) { await reload() }
-        .onAppear {
-            if !store.settings.setUp { setup = true }
-            Task { await reload() }
-        }
-        .sheet(isPresented: $setup, onDismiss: { Task { await reload() } }) { GoalView(firstTime: true) }
-        .sheet(isPresented: $editingGoal, onDismiss: { Task { await reload() } }) { GoalView(firstTime: false) }
-        .sheet(item: $search) { r in FoodSearchView(day: day, slot: r.slot, favoritesOnly: r.favorites) }
-        .sheet(isPresented: $scanning) { BarcodeView(day: day, slot: defaultSlot) }
-        .fullScreenCover(isPresented: $photographing) { AIPhotoFlow(day: day, slot: defaultSlot) }
     }
 
     private func reload() async {

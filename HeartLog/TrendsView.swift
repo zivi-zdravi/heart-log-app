@@ -86,29 +86,31 @@ struct TrendsView: View {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 160)
                     } else {
                         if let last = records.last(where: { $0.recovery != nil }) {
-                            NavigationLink { RecoveryView(day: keyDate(last.day) ?? today, record: last) } label: {
+                            Button { AppNav.shared.open(.recovery(keyDate(last.day) ?? today)) } label: {
                                 chart(TrendMetric(title: "Recovery", color: Theme.green, unit: "%", colorize: true, fixed: 0...100, opens: true)) { $0.recovery }
                             }
                         } else {
                             chart(TrendMetric(title: "Recovery", color: Theme.green, unit: "%", colorize: true, fixed: 0...100)) { $0.recovery }
                         }
-                        NavigationLink { MetricDetailView(kind: .hrv, day: today) } label: {
+                        Button { AppNav.shared.open(.hrv(today)) } label: {
                             chart(TrendMetric(title: "Overnight HRV", color: Theme.blue, unit: " ms", minSpan: 15, weekStyle: .line, night: true, opens: true),
                                   usual: records.last?.usualHRV) { $0.hrv }
                         }
-                        NavigationLink { MetricDetailView(kind: .rhr, day: today) } label: {
+                        Button { AppNav.shared.open(.rhr(today)) } label: {
                             chart(TrendMetric(title: "Resting heart rate", color: Theme.orange, minSpan: 10, lowerIsBetter: true, weekStyle: .line, night: true, opens: true),
                                   usual: records.last?.usualRHR) { $0.rhr.map { Double($0) } }
                         }
                         chart(TrendMetric(title: "Breathing rate", color: Theme.blue, unit: "/min", decimals: 1, minSpan: 3, weekStyle: .line, night: true),
                               usual: SleepMath.median(records.suffix(30).compactMap(\.respRate))) { $0.respRate }
                         chart(TrendMetric(title: "Sleep score", color: Theme.blue, colorize: true, fixed: 0...100, night: true)) { $0.sleepScore }
-                        NavigationLink { CaloriesDetailView(day: today) } label: {
+                        Button { AppNav.shared.open(.calories(today)) } label: {
                             CaloriesTrend(range: range, start: start, today: today, burned: values { $0.calories }, eaten: eatenValues, goal: goal)
                         }
                         chart(TrendMetric(title: "Hours slept", color: Theme.blue, unit: " h", decimals: 1, minSpan: 3, night: true)) { $0.sleep.map { $0.asleepMin / 60 } }
-                        chart(TrendMetric(title: "Strain", color: Theme.orange, decimals: 1, minSpan: 6)) { $0.strain }
-                        NavigationLink { StepsHistoryView() } label: {
+                        Button { AppNav.shared.open(.strain(today)) } label: {
+                            chart(TrendMetric(title: "Strain", color: Theme.orange, decimals: 1, minSpan: 6, opens: true)) { $0.strain }
+                        }
+                        Button { AppNav.shared.open(.steps) } label: {
                             TrendChart(metric: TrendMetric(title: "Steps", color: Theme.green, minSpan: 3000, opens: true), range: range, start: start, today: today,
                                        values: stepValues, usual: nil)
                         }
@@ -123,7 +125,7 @@ struct TrendsView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .task(id: range) { await reload() }
-        .sheet(isPresented: $asking) { AskView(range: range) }
+        .sheet(isPresented: $asking) { AskView(range: range, topic: .trends) }
     }
 
     private func reload() async {

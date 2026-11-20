@@ -409,8 +409,26 @@ struct AIPhotoFlow: View {
 
 // MARK: Ask about your data
 
+/// Which screen Ask was opened from: it picks the starting suggestions and
+/// tells Claude what the person was looking at.
+enum AskTopic: String {
+    case today, activity, sleep, trends, meals, body
+
+    var suggestions: [String]? {
+        switch self {
+        case .today: return ["How am I doing today?", "Why is my recovery where it is?", "What should today look like?"]
+        case .activity: return ["What raised my strain today?", "How active was I this week?", "Am I getting enough steps?"]
+        case .sleep: return ["How did I sleep last night?", "What helps my deep sleep?", "Why do I wake up early?"]
+        case .meals: return ["Make my breakfast lower in calories", "How is my protein this week?", "What should I eat for dinner?"]
+        case .body: return ["Do my symptoms follow my sleep?", "How is my blood pressure trending?", "Any patterns in my cycle?"]
+        case .trends: return nil
+        }
+    }
+}
+
 struct AskView: View {
     let range: TrendRange
+    var topic: AskTopic = .trends
     @Environment(\.dismiss) private var dismiss
     @State private var question = ""
     @State private var turns: [(role: String, text: String)] = []
@@ -422,6 +440,7 @@ struct AskView: View {
     private var days: Int { range == .week ? 7 : range == .month ? 28 : 365 }
 
     private var suggestions: [String] {
+        if let t = topic.suggestions { return t }
         switch range {
         case .week: return ["Why was my recovery low this week?", "How did I sleep this week?", "Am I drinking enough water?"]
         case .month: return ["Do late dinners hurt my sleep?", "What helps my recovery most?", "Am I sleeping more on weekends?"]
@@ -527,7 +546,8 @@ struct AskView: View {
         turns.append((role: "user", text: q))
         asking = true
         let meals = AskContext.mealSummaries(days: days)
-        let ctx = await Task.detached { AskContext.build(days: days, meals: meals) }.value
+        var ctx = await Task.detached { AskContext.build(days: days, meals: meals) }.value
+        ctx.json["asked_from"] = "the \(topic.rawValue) screen"
         sent = ctx.description
         do {
             let a = try await AIClient.ask(question: q, context: ctx.json, history: history)

@@ -56,6 +56,7 @@ struct DayChevrons: View {
 
 struct SleepView: View {
     @Binding var day: Date
+    @ObservedObject private var nav = AppNav.shared
     @State private var record: DayRecord?
     @State private var samples: [Sample] = []
     @State private var loaded = false
@@ -82,21 +83,23 @@ struct SleepView: View {
     private var nightOf: Date { Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $nav.sleepPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 0) {
                         DayChevrons(text: "Night of \(Theme.shortDay.string(from: nightOf))", canGoForward: !isToday, move: move)
-                        Text("Sleep").font(Theme.display(30)).foregroundColor(Theme.text)
+                        ScreenTitle(title: "Sleep", topic: .sleep)
                     }
                     if let r = record, let p = r.sleep {
                         scoreCard(r, p)
+                        heartTiles(r)
                         if let st = stages {
                             hypnogram(st)
                             stageTotals(st)
                         } else if !r.isWhoop {
                             chartCard(p)
                         }
+                        recoveryCard(r)
                         againstUsual(r, p)
                         tiles(r, p)
                     } else if loaded {
@@ -124,6 +127,7 @@ struct SleepView: View {
                 guard abs(v.translation.width) > 60, abs(v.translation.width) > abs(v.translation.height) * 2 else { return }
                 move(v.translation.width > 0 ? -1 : 1)
             })
+            .appPages()
         }
         .task(id: day) { await reload() }
         .followToday($day)
@@ -400,6 +404,44 @@ struct SleepView: View {
         return (Int64(bed.timeIntervalSince1970 * 1000), Int64(wake.timeIntervalSince1970 * 1000))
     }
 
+    /// The two overnight numbers recovery is built from, each opening its page.
+    private func heartTiles(_ r: DayRecord) -> some View {
+        HStack(spacing: 10) {
+            Button { nav.sleepPath.append(.hrv(day)) } label: {
+                Tile(title: "HRV, overnight", value: r.hrv.map { "\(Int($0.rounded())) ms" } ?? "--", note: r.usualHRV.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.blue, icon: "waveform.path.ecg")
+            }
+            Button { nav.sleepPath.append(.rhr(day)) } label: {
+                Tile(title: "Resting heart rate", value: r.rhr.map { "\($0)" } ?? "--", note: r.usualRHR.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.orange, icon: "heart")
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func recoveryCard(_ r: DayRecord) -> some View {
+        if r.recovery != nil {
+            Button { nav.sleepPath.append(.recovery(day)) } label: {
+                Card(accent: Theme.green) {
+                    HStack(spacing: 14) {
+                        VStack(spacing: 0) {
+                            Text(r.recovery.map { "\(Int($0.rounded()))%" } ?? "--").font(Theme.display(28)).foregroundColor(Theme.level(r.recovery))
+                            Text("recovery").font(.system(size: 11)).foregroundColor(Theme.dim)
+                        }
+                        .frame(minWidth: 70)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(DetailMath.recoveryHeadline(r.recovery)).font(.system(size: 16, weight: .semibold)).foregroundColor(Theme.text)
+                            Text(DetailMath.recoveryReason(recovery: r.recovery, hrv: r.hrv, usualHRV: r.usualHRV, rhr: r.rhr, usualRHR: r.usualRHR))
+                                .font(.system(size: 13)).foregroundColor(Theme.dim).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.dim)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens Recovery")
+        }
+    }
+
     private func tiles(_ r: DayRecord, _ p: SleepPeriod) -> some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             Tile(title: isToday ? "Tonight's need" : "Sleep need", value: r.sleepNeedMin.map { Theme.minutes($0) } ?? "--", accent: Theme.blue, icon: "bed.double")
@@ -408,7 +450,7 @@ struct SleepView: View {
                 Tile(title: "Target bedtime", value: Theme.clock(t.bed), accent: Theme.blue, icon: "moon")
                 Tile(title: "Target wake", value: Theme.clock(t.wake), accent: Theme.blue, icon: "sun.max")
             } else {
-                Tile(title: "Overnight HRV", value: r.hrv.map { "\(Int($0.rounded())) ms" } ?? "--", accent: Theme.blue, icon: "waveform.path.ecg")
+                Tile(title: "Breathing rate", value: r.respRate.map { String(format: "%.1f", $0) } ?? "--", note: "per minute", accent: Theme.blue, icon: "lungs")
                 let wakeUps = stages.map { StageMath.wakeUps($0) } ?? p.awakeEvents
                 Tile(title: "Times awake", value: wakeUps.map { stages != nil ? "\($0)" : "~\($0)" } ?? "--", accent: Theme.blue, icon: "eye")
             }

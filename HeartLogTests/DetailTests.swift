@@ -84,4 +84,18 @@ final class DetailTests: XCTestCase {
         XCTAssertEqual(DetailMath.morningLine(asleepMin: 456, recovery: 70), "7:36 asleep. Recovery 70%. Room for a harder day.")
         XCTAssertEqual(DetailMath.morningLine(asleepMin: nil, recovery: nil), "Last night is still being worked out.")
     }
+
+    func testStrainTimelineClimbsWithEffort() {
+        let bounds = Metrics.zoneBounds(maxHR: 172, resting: 56) // zone 1 from 102
+        let start: Int64 = 0
+        // 30 minutes resting, then 30 minutes at 110 (zone 1), one sample a second.
+        var s: [Sample] = []
+        for i in 0..<3600 { s.append(Sample(t: Int64(i) * 1000, hr: i < 1800 ? 60 : 110, rr: [])) }
+        let line = StrainMath.timeline(s, bounds: bounds, from: start, to: 3_600_000)
+        XCTAssertEqual(line.first?.strain, 0)
+        XCTAssertEqual(line[2].strain, 0, accuracy: 0.001) // first 30 minutes add nothing
+        XCTAssertGreaterThan(line.last!.strain, 6)          // 30 easy minutes is about 6
+        XCTAssertEqual(line.last!.strain, Metrics.strain(zoneSeconds: Metrics.zoneSeconds(s, bounds)), accuracy: 0.05)
+        XCTAssertEqual(StrainMath.zoneRanges(bounds).first, "102 to 125")
+    }
 }
