@@ -68,6 +68,7 @@ final class Recorder: NSObject, ObservableObject {
     func didLaunch(background: Bool) {
         PhoneUse.appOnScreen = !background
         ClosedReminder.cancel()
+        BandCapture.shared.restageIfRulesChanged()
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionRestoreIdentifierKey: "heartlog.central"])
         if let s = session {

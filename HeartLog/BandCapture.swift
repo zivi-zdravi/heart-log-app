@@ -182,6 +182,16 @@ final class BandCapture: ObservableObject {
         return (BandNight.steps((lead.map { [$0] } ?? []) + inDay), inDay.count / 60)
     }
 
+    /// Bump when the night rules change, so saved nights get worked out again.
+    static let nightRulesVersion = 2
+
+    func restageIfRulesChanged() {
+        let key = "nightRulesVersion"
+        guard UserDefaults.standard.integer(forKey: key) != Self.nightRulesVersion else { return }
+        UserDefaults.standard.set(Self.nightRulesVersion, forKey: key)
+        restageRecent()
+    }
+
     /// Re-stage the last few nights from saved data (Settings button, and after an update).
     func restageRecent(days: Int = 14) {
         queue.async {
