@@ -8,7 +8,13 @@ enum BandNight {
     /// The night's in-bed span, from the band's own still/sleep state: the
     /// stretch with the most sleep, joining gaps of up to 30 minutes. Needs at
     /// least an hour the band called sleep. Unix seconds.
-    static func window(_ secs: Seconds, maxGapMin: Int = 30, minSleepMin: Int = 60) -> (start: Int64, end: Int64)? {
+    ///
+    /// A second sleep of at least an hour that starts within 3 hours of the
+    /// first one (before noon on the way out, or after 6 PM on the way in)
+    /// joins the same night, with the time between counted as in bed: waking
+    /// at 2 or 4, staying up a while, then going back to sleep.
+    static func window(_ secs: Seconds, maxGapMin: Int = 30, minSleepMin: Int = 60,
+                       rejoinMin: Int = 180, calendar: Calendar = .current) -> (start: Int64, end: Int64)? {
         guard let first = secs.first?.t, let last = secs.last?.t else { return nil }
         let base = first - first % 60
         let count = Int((last - base) / 60) + 1
@@ -21,7 +27,7 @@ enum BandNight {
         }
         // A minute counts as in bed when most of its recorded seconds were still or asleep.
         let inBed = (0..<count).map { seen[$0] > 0 && stillish[$0] * 2 > seen[$0] }
-        var best: (start: Int, end: Int, sleep: Int)?
+        var blocks: [(start: Int, end: Int, sleep: Int)] = []
         var m = 0
         while m < count {
             guard inBed[m] else { m += 1; continue }
@@ -40,11 +46,23 @@ enum BandNight {
                 }
                 k += 1
             }
-            if sleepMin >= minSleepMin, sleepMin > (best?.sleep ?? 0) { best = (m, end, sleepMin) }
+            if sleepMin >= minSleepMin { blocks.append((m, end, sleepMin)) }
             m = end + 1
         }
-        guard let b = best else { return nil }
-        return (base + Int64(b.start) * 60, base + Int64(b.end + 1) * 60)
+        guard let bi = blocks.indices.max(by: { blocks[$0].sleep < blocks[$1].sleep }) else { return nil }
+        var lo = bi, hi = bi
+        func hour(_ minute: Int) -> Int {
+            calendar.component(.hour, from: Date(timeIntervalSince1970: Double(base + Int64(minute) * 60)))
+        }
+        // Later sleep: starts soon after, and before noon.
+        while hi + 1 < blocks.count, blocks[hi + 1].start - blocks[hi].end <= rejoinMin, hour(blocks[hi + 1].start) < 12 { hi += 1 }
+        // Earlier sleep: ends soon before, and started in the evening or night.
+        while lo > 0, blocks[lo].start - blocks[lo - 1].end <= rejoinMin {
+            let h = hour(blocks[lo - 1].start)
+            guard h >= 18 || h < 6 else { break }
+            lo -= 1
+        }
+        return (base + Int64(blocks[lo].start) * 60, base + Int64(blocks[hi].end + 1) * 60)
     }
 
     /// The stager's input for a span: one sample a second, short gaps (up to a

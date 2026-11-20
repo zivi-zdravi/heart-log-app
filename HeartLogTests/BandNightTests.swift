@@ -99,6 +99,38 @@ final class BandNightTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(w.end - wantEnd), 120)
     }
 
+    /// Asleep 8 PM to 2:30 AM, awake until 4:30, asleep again until 6:20.
+    private func splitNight(secondStartsAt h2: Int = 510) -> (secs: [BandSecond], eight: Int64) {
+        let eight: Int64 = 1_799_971_200 + 20 * 3600 // 8 PM UTC
+        var out: [BandSecond] = []
+        let total = 13 * 60 * 60
+        for i in stride(from: 0, to: total, by: 1) {
+            let min = i / 60
+            let asleep = min < 390 || (min >= h2 && min < h2 + 110)
+            out.append(BandSecond(t: eight + Int64(i), hr: asleep ? 56 : 80, rr: [], gravity: [0, 0, 1],
+                                  steps: 0, activity: 0, sleepState: asleep ? 2 : 0))
+        }
+        return (out, eight)
+    }
+
+    func testSecondSleepAfterALongWakeJoinsTheNight() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let (secs, eight) = splitNight()
+        let w = try XCTUnwrap(BandNight.window(secs, calendar: utc))
+        XCTAssertEqual(w.start, eight)
+        XCTAssertEqual(w.end, eight + 620 * 60) // 6:20 AM
+    }
+
+    func testSleepTooLongAfterStaysSeparate() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        // Second sleep starts 4 h after the first ends: a nap, not the night.
+        let (secs, eight) = splitNight(secondStartsAt: 390 + 240)
+        let w = try XCTUnwrap(BandNight.window(secs, calendar: utc))
+        XCTAssertEqual(w.end, eight + 390 * 60)
+    }
+
     func testNoWindowWithoutSleep() {
         let awake = (0..<7200).map { BandSecond(t: Int64($0), hr: 80, rr: [750], gravity: [0, 0, 1], steps: 0, activity: 0, sleepState: 0) }
         XCTAssertNil(BandNight.window(awake))
