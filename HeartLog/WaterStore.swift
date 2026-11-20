@@ -62,6 +62,10 @@ final class WaterStore: ObservableObject {
         case .activity:
             let acts = ActivityStore.shared
             if let current = acts.current { acts.finish(current.id) } else { acts.start("Other") }
+        case .doses:
+            // Nothing due means nothing happens, and no confirming buzz.
+            guard DoseStore.shared.markDue() != nil else { return }
+            BandLink.shared.buzz("dose")
         }
         change {
             $0.lastTapAt = Store.nowMs()

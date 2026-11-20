@@ -108,7 +108,7 @@ struct NotificationsView: View {
 }
 
 /// Off / Phone / Band buzz / Both, in the same list style as Double-tap.
-private struct RoutePicker: View {
+struct RoutePicker: View {
     let title: String
     let detail: String
     @Binding var route: NotifyRoute

@@ -5,12 +5,14 @@ enum TapAction: String, Codable, CaseIterable {
     case nothing
     case logWater
     case activity
+    case doses
 
     var title: String {
         switch self {
         case .nothing: return "Do nothing"
         case .logWater: return "Log a glass of water"
         case .activity: return "Start or stop an activity"
+        case .doses: return "Mark supplements and meds taken"
         }
     }
 
@@ -19,6 +21,7 @@ enum TapAction: String, Codable, CaseIterable {
         case .nothing: return "Taps are ignored."
         case .logWater: return "Adds one glass to today's water on Meals."
         case .activity: return "Same as Start on the Today screen."
+        case .doses: return "Checks off the group that's due, and the band buzzes once."
         }
     }
 }

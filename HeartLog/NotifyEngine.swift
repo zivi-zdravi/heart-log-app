@@ -202,6 +202,16 @@ final class NotifyEngine {
             alarmUnsavedSince = nil
         }
 
+        // Supplement and medication reminders, one per group or lone item.
+        for slot in DoseMath.remindersDue(DoseStore.shared.data, day: todayKey, minute: minute) {
+            let names = slot.items.map(\.name).joined(separator: ", ")
+            let title = "Time for \(slot.name)"
+            let body = slot.isGroup ? names + "." : DoseMath.doseText(slot.items[0]) + "."
+            if send(slot.reminder, id: "dose-\(slot.id)", title: title, body: body) {
+                DoseStore.shared.change { $0.reminded[slot.id] = todayKey }
+            }
+        }
+
         // No-alarm check-in at 7 PM
         if s.noAlarmCheckIn != .off, minute >= 19 * 60, state.checkInDay != todayKey,
            NotifyRules.checkInDue(schedule: AlarmStore.shared.schedule, now: now, calendar: cal) {

@@ -34,7 +34,11 @@ final class MealStore: ObservableObject {
 
     func entries(_ day: String) -> [MealEntry] { data.entries.filter { $0.day == day }.sorted { $0.time < $1.time } }
 
-    func total(_ day: String) -> Nutrients { entries(day).reduce(.zero) { $0 + $1.nutrients } }
+    /// Food eaten, plus calories from supplements checked off that day.
+    func total(_ day: String) -> Nutrients {
+        let pills = DoseMath.kcal(DoseStore.shared.data, day: day)
+        return entries(day).reduce(.zero) { $0 + $1.nutrients } + Nutrients(kcal: pills, protein: 0, carbs: 0, fat: 0)
+    }
 
     func add(_ e: MealEntry) {
         data.entries.removeAll { $0.id == e.id }

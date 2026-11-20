@@ -21,6 +21,7 @@ struct MealsView: View {
     /// Inside the Log tab: no stack of its own, and the Log header on top.
     var inLog = false
     @ObservedObject private var store = MealStore.shared
+    @ObservedObject private var doses = DoseStore.shared
     @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var goal: MealStore.Goal?
     @State private var burned: Double?
@@ -94,6 +95,7 @@ struct MealsView: View {
                     }
                     meals
                     if SettingsStore.shared.value.waterOn { WaterCard(key: key) }
+                    if doses.data.supplementsOn { DoseList(kind: .supplement) }
                     Text("Tap a meal to see or change its foods.").font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
@@ -896,6 +898,7 @@ struct ScannerView: UIViewControllerRepresentable {
 
 struct MealsSettingsView: View {
     @ObservedObject private var store = MealStore.shared
+    @ObservedObject private var doses = DoseStore.shared
     @State private var newAvoid = ""
     @State private var key = FoodKey.value ?? ""
     @State private var goal: MealStore.Goal?
@@ -909,8 +912,12 @@ struct MealsSettingsView: View {
                     SettingsStore.shared.value.waterOn = v
                     if !v { WaterFeature.turnedOff() }
                 }))
+                Toggle("Supplements", isOn: Binding(get: { doses.data.supplementsOn }, set: { v in doses.change { $0.supplementsOn = v } }))
+                if doses.data.supplementsOn {
+                    Toggle("Include supplements in Ask", isOn: Binding(get: { doses.data.supplementsInAsk }, set: { v in doses.change { $0.supplementsInAsk = v } }))
+                }
             } footer: {
-                Text("Turning Meals off hides the Meals tab. Turning Water off hides water and stops its reminders. What you logged is kept.")
+                Text("Turning Meals off hides Meals in the Log tab. Turning Water or Supplements off hides them and stops their reminders. What you logged is kept.")
             }
             Section {
                 NavigationLink {

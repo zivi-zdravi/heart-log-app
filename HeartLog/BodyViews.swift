@@ -120,6 +120,7 @@ struct ToggleChips: View {
 
 struct BodySettingsView: View {
     @ObservedObject private var store = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
     @ObservedObject private var app = SettingsStore.shared
     @State private var showAll = false
 
@@ -147,6 +148,14 @@ struct BodySettingsView: View {
                 }
                 if shows(.menopause, on: store.settings.menopause) {
                     Toggle(isOn: binding(\.menopause)) { row("Menopause", "Hot flashes, night sweats and more") }
+                }
+                Toggle(isOn: Binding(get: { doses.data.medicationsOn }, set: { v in doses.change { $0.medicationsOn = v } })) {
+                    row("Medications", "Doses, times and reminders")
+                }
+                if doses.data.medicationsOn {
+                    Toggle(isOn: Binding(get: { doses.data.medicationsInAsk }, set: { v in doses.change { $0.medicationsInAsk = v } })) {
+                        row("Include medications in Ask", "Lets Ask see which ones you took each day")
+                    }
                 }
                 if hidesSome {
                     Button("Show all trackers") { showAll = true }.foregroundColor(Theme.blue)
@@ -314,9 +323,10 @@ private let lilacBg = Color(hex: 0x2A2433)
 
 struct BodyLogCard: View {
     @ObservedObject private var store = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
 
     var body: some View {
-        if store.data.settings.anyOn {
+        if store.data.settings.anyOn || doses.data.medicationsOn {
             Button { AppNav.shared.openLog(body: true) } label: {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "heart.text.square").font(.system(size: 20)).foregroundColor(lilac).padding(.top, 1)
@@ -342,6 +352,10 @@ struct BodyLogCard: View {
                         }
                         if store.data.settings.menopause, let l = SymptomSummary.todayLine(store.data) {
                             line("Menopause") { Text(l).foregroundColor(Theme.text) }
+                        }
+                        if doses.data.medicationsOn {
+                            let c = DoseMath.counts(doses.data, day: DoseStore.today(), .medication)
+                            if c.total > 0 { line("Medications") { Text("\(c.taken) of \(c.total) taken").foregroundColor(Theme.text) } }
                         }
                     }
                 }
@@ -371,6 +385,7 @@ struct BodyLogView: View {
     /// Inside the Log tab: the Log header on top and no navigation bar.
     var inLog = false
     @ObservedObject private var store = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
 
     var body: some View {
         ScrollView {
@@ -385,7 +400,7 @@ struct BodyLogView: View {
                     Text("Your four come first. Tap +1 each time; the time is saved so it can be lined up with your sleep and heart rate.")
                         .font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
-                if !st.anyOn {
+                if !st.anyOn && !doses.data.medicationsOn {
                     Text("Nothing is turned on. Choose what to track in Settings, Body log.").font(.system(size: 14)).foregroundColor(soft)
                 }
                 NavigationLink { BodySettingsView() } label: {
@@ -416,6 +431,12 @@ struct BodyLogView: View {
         if st.menopause {
             out.append(BodyTile(id: "meno", view: AnyView(NavigationLink { MenopauseView() } label: {
                 tile("thermometer.medium", lilac, "Menopause", "Hot flashes, night sweats, sleep, joints and more")
+            })))
+        }
+        if doses.data.medicationsOn {
+            let c = DoseMath.counts(doses.data, day: DoseStore.today(), .medication)
+            out.append(BodyTile(id: "meds", view: AnyView(NavigationLink { MedicationsView() } label: {
+                tile("pills", Theme.blue, "Medications", c.total == 0 ? "Set up what you take" : "\(c.taken) of \(c.total) taken today")
             })))
         }
         return out
@@ -1117,9 +1138,10 @@ struct LogTab: View {
     @ObservedObject private var nav = AppNav.shared
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var store = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
 
     private var showBody: Bool {
-        let meals = settings.value.mealsOn, body = store.data.settings.anyOn
+        let meals = settings.value.mealsOn, body = store.data.settings.anyOn || doses.data.medicationsOn
         if !meals { return true }
         if !body { return false }
         return nav.logBody
@@ -1137,11 +1159,12 @@ struct LogHeader: View {
     @ObservedObject private var nav = AppNav.shared
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var store = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ScreenTitle(title: "Log", topic: nav.logBody ? .body : .meals)
-            if settings.value.mealsOn && store.data.settings.anyOn {
+            if settings.value.mealsOn && (store.data.settings.anyOn || doses.data.medicationsOn) {
                 Picker("Show", selection: $nav.logBody) {
                     Text("Meals").tag(false)
                     Text("Body").tag(true)

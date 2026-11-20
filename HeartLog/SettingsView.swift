@@ -432,6 +432,7 @@ struct BackupView: View {
                 } else {
                     BodyStore.shared.reload()
                 }
+                DoseStore.shared.reload()
                 if result.deferred.contains(BandHistoryStore.fileName), let b = try BackupArchive.extract(url, name: BandHistoryStore.fileName) {
                     BandHistoryStore.shared.merge(json: b)
                 } else {
@@ -581,6 +582,7 @@ struct RootView: View {
     @ObservedObject private var nav = AppNav.shared
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var bodyStore = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
     @AppStorage("setupDone") private var setupDone = false
     @State private var welcome = false
 
@@ -607,7 +609,7 @@ struct RootView: View {
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(AppTab.sleep)
             TrendsView()
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(AppTab.trends)
-            if settings.value.mealsOn || bodyStore.data.settings.anyOn {
+            if settings.value.mealsOn || bodyStore.data.settings.anyOn || doses.data.medicationsOn {
                 LogTab()
                     .tabItem { Label("Log", systemImage: "square.and.pencil") }.tag(AppTab.log)
             }

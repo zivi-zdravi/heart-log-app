@@ -115,11 +115,12 @@ struct DoubleTapView: View {
             } header: {
                 Text("Tap the band twice, quickly")
             } footer: {
-                Text("One tap adds one glass (\(water.glassOz) oz). Glass size and your daily water goal are in Settings, Meals.")
+                Text(water.tapAction == .doses ? "A double-tap checks off the group whose reminder went off in the last hour, or the next one if it's due within 30 minutes. If nothing is due, the tap does nothing."
+                     : "One tap adds one glass (\(water.glassOz) oz). Glass size and your daily water goal are in Settings, Meals.")
             }
             if let at = water.data.lastTapAt, let act = water.data.lastTapAction {
                 Section("Last tap") {
-                    Text("\(Date(timeIntervalSince1970: Double(at) / 1000).formatted(date: .abbreviated, time: .shortened)): \(act == .logWater ? "logged a glass of water" : act == .activity ? "started or stopped an activity" : "nothing")")
+                    Text("\(Date(timeIntervalSince1970: Double(at) / 1000).formatted(date: .abbreviated, time: .shortened)): \(act == .logWater ? "logged a glass of water" : act == .activity ? "started or stopped an activity" : act == .doses ? "checked off supplements or meds" : "nothing")")
                 }
             }
             Section {
