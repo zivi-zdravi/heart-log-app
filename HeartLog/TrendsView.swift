@@ -32,6 +32,7 @@ private let dayOnly: DateFormatter = { let f = DateFormatter(); f.setLocalizedDa
 private let yearOnly: DateFormatter = { let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("yyyy"); return f }()
 
 struct TrendsView: View {
+    @ObservedObject private var nav = AppNav.shared
     @State private var range: TrendRange = .month
     @State private var records: [DayRecord] = []
     @State private var steps: [String: StepsLog.Entry] = [:]
@@ -60,7 +61,7 @@ struct TrendsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $nav.trendsPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .bottom) {
@@ -125,6 +126,7 @@ struct TrendsView: View {
                 .buttonStyle(.plain)
             }
             .tabRoot(.trends)
+            .appPages()
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }

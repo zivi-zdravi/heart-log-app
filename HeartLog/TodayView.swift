@@ -58,7 +58,7 @@ struct TodayView: View {
     private var isToday: Bool { Calendar.current.isDateInToday(day) }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $nav.todayPath) {
             ScrollView {
                 morningSky
                 VStack(alignment: .leading, spacing: 12) {
@@ -90,6 +90,7 @@ struct TodayView: View {
                 })
             }
             .tabRoot(.today)
+            .appPages()
             .coordinateSpace(name: "todayScroll")
             .onPreferenceChange(ScrollTopKey.self) { y in
                 // y is where the cards start. Remember it on the first reading,

@@ -13,6 +13,9 @@ enum AppPage: Hashable {
 
 enum AppTab: Int {
     case today = 0, activity, sleep, trends, log
+
+    /// Names the Back button on pages opened from this tab.
+    var title: String { ["Today", "Activity", "Sleep", "Trends", "Log"][rawValue] }
 }
 
 final class AppNav: ObservableObject {
@@ -62,6 +65,8 @@ final class AppNav: ObservableObject {
     }
     @Published var sleepPath: [AppPage] = []
     @Published var activityPath: [AppPage] = []
+    @Published var todayPath: [AppPage] = []
+    @Published var trendsPath: [AppPage] = []
     /// Which side of the Log tab is showing.
     @Published var logBody = false
     /// Bumped to rebuild a tab, which takes it back to its home screen.
@@ -76,31 +81,34 @@ final class AppNav: ObservableObject {
     func select(_ t: AppTab) {
         let old = tab
         if t == old { goHome(t) } else { tab = t; goHome(old) }
+        // Today means today: tapping it from anywhere brings every tab back to today's date.
+        if t == .today { goToday() }
     }
 
     private func goHome(_ t: AppTab) {
         switch t {
         case .sleep: sleepPath = []
         case .activity: activityPath = []
+        case .today: todayPath = []
+        case .trends: trendsPath = []
         default: break
         }
         if !atRoot.contains(t) { stackIDs[t, default: 0] += 1 }
     }
 
-    /// Opens a page in its home tab, on top of that tab's main screen.
+    /// Opens a page on top of the tab you're on, so Back returns to where you were.
+    /// The page also lives in its home tab, reached from there as usual.
     func open(_ page: AppPage) {
-        switch page {
-        case .hrv(let d), .rhr(let d), .recovery(let d):
-            day = Calendar.current.startOfDay(for: d)
-            sleepPath = [page]
-            jump(.sleep)
-        case .strain(let d), .calories(let d):
-            day = Calendar.current.startOfDay(for: d)
-            activityPath = [page]
-            jump(.activity)
-        case .steps:
-            activityPath = [page]
-            jump(.activity)
+        switch tab {
+        case .today: todayPath.append(page)
+        case .trends: trendsPath.append(page)
+        case .sleep: sleepPath.append(page)
+        case .activity: activityPath.append(page)
+        case .log:
+            switch page {
+            case .hrv, .rhr, .recovery: sleepPath = [page]; jump(.sleep)
+            default: activityPath = [page]; jump(.activity)
+            }
         }
     }
 
@@ -280,7 +288,8 @@ struct ScreenTitle: View {
 extension View {
     /// Put on the main screen of a tab, inside its NavigationStack.
     func tabRoot(_ t: AppTab) -> some View {
-        onAppear { AppNav.shared.rootShown(t, true) }
+        navigationTitle(t.title)
+            .onAppear { AppNav.shared.rootShown(t, true) }
             .onDisappear { AppNav.shared.rootShown(t, false) }
     }
 }
