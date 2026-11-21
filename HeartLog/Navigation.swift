@@ -24,6 +24,28 @@ final class AppNav: ObservableObject {
     @Published var activityPath: [AppPage] = []
     /// Which side of the Log tab is showing.
     @Published var logBody = false
+    /// Bumped to rebuild a tab, which takes it back to its home screen.
+    @Published private(set) var stackIDs: [AppTab: Int] = [:]
+    /// Tabs whose home screen is showing (not covered by a pushed page).
+    private var atRoot: Set<AppTab> = []
+
+    func stackID(_ t: AppTab) -> Int { stackIDs[t] ?? 0 }
+    func rootShown(_ t: AppTab, _ shown: Bool) { if shown { atRoot.insert(t) } else { atRoot.remove(t) } }
+
+    /// The tab bar. Leaving a tab, or tapping the one you're on, sends it home.
+    func select(_ t: AppTab) {
+        let old = tab
+        if t == old { goHome(t) } else { tab = t; goHome(old) }
+    }
+
+    private func goHome(_ t: AppTab) {
+        switch t {
+        case .sleep: sleepPath = []
+        case .activity: activityPath = []
+        default: break
+        }
+        if !atRoot.contains(t) { stackIDs[t, default: 0] += 1 }
+    }
 
     /// Opens a page in its home tab, on top of that tab's main screen.
     func open(_ page: AppPage) {
@@ -31,27 +53,34 @@ final class AppNav: ObservableObject {
         case .hrv(let d), .rhr(let d), .recovery(let d):
             sleepDay = Calendar.current.startOfDay(for: d)
             sleepPath = [page]
-            tab = .sleep
+            jump(.sleep)
         case .strain, .calories, .steps:
             activityPath = [page]
-            tab = .activity
+            jump(.activity)
         }
+    }
+
+    /// Shortcut jump: the tab you leave goes home, the target keeps its new page.
+    private func jump(_ t: AppTab) {
+        let old = tab
+        tab = t
+        if old != t { goHome(old) }
     }
 
     func openSleep(_ day: Date) {
         sleepDay = Calendar.current.startOfDay(for: day)
         sleepPath = []
-        tab = .sleep
+        jump(.sleep)
     }
 
     func openActivity() {
         activityPath = []
-        tab = .activity
+        jump(.activity)
     }
 
     func openLog(body: Bool) {
         logBody = body
-        tab = .log
+        jump(.log)
     }
 }
 
@@ -130,5 +159,13 @@ struct ScreenTitle: View {
             Spacer()
             AskButton(topic: topic)
         }
+    }
+}
+
+extension View {
+    /// Put on the main screen of a tab, inside its NavigationStack.
+    func tabRoot(_ t: AppTab) -> some View {
+        onAppear { AppNav.shared.rootShown(t, true) }
+            .onDisappear { AppNav.shared.rootShown(t, false) }
     }
 }

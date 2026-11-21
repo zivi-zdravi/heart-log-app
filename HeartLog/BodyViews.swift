@@ -1149,7 +1149,8 @@ struct LogTab: View {
 
     var body: some View {
         NavigationStack {
-            if showBody { BodyLogView(inLog: true) } else { MealsView(inLog: true) }
+            Group { if showBody { BodyLogView(inLog: true) } else { MealsView(inLog: true) } }
+                .tabRoot(.log)
         }
     }
 }

@@ -88,6 +88,7 @@ struct TodayView: View {
                     Color.clear.preference(key: ScrollTopKey.self, value: g.frame(in: .named("todayScroll")).minY)
                 })
             }
+            .tabRoot(.today)
             .coordinateSpace(name: "todayScroll")
             .onPreferenceChange(ScrollTopKey.self) { y in
                 // y is where the cards start. Remember it on the first reading,

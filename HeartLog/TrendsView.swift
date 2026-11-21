@@ -121,6 +121,7 @@ struct TrendsView: View {
                 .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
                 .buttonStyle(.plain)
             }
+            .tabRoot(.trends)
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }

@@ -89,6 +89,7 @@ struct ActivityTab: View {
                 }
                 .padding(20)
             }
+            .tabRoot(.activity)
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .appPages()

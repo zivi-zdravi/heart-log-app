@@ -600,17 +600,17 @@ struct RootView: View {
     }
 
     var body: some View {
-        TabView(selection: $nav.tab) {
-            TodayView(openActivity: { nav.openActivity() }, openMeals: { nav.openLog(body: false) }, openSleep: { day in nav.openSleep(day) })
+        TabView(selection: Binding(get: { nav.tab }, set: { nav.select($0) })) {
+            TodayView(openActivity: { nav.openActivity() }, openMeals: { nav.openLog(body: false) }, openSleep: { day in nav.openSleep(day) }).id(nav.stackID(.today))
                 .tabItem { Label("Today", systemImage: "sun.max") }.tag(AppTab.today)
-            ActivityTab()
+            ActivityTab().id(nav.stackID(.activity))
                 .tabItem { Label("Activity", systemImage: "figure.walk") }.tag(AppTab.activity)
-            SleepView(day: $nav.sleepDay)
+            SleepView(day: $nav.sleepDay).id(nav.stackID(.sleep))
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(AppTab.sleep)
-            TrendsView()
+            TrendsView().id(nav.stackID(.trends))
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(AppTab.trends)
             if settings.value.mealsOn || bodyStore.data.settings.anyOn || doses.data.medicationsOn {
-                LogTab()
+                LogTab().id(nav.stackID(.log))
                     .tabItem { Label("Log", systemImage: "square.and.pencil") }.tag(AppTab.log)
             }
         }

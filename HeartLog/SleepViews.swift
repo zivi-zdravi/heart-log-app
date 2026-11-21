@@ -121,6 +121,7 @@ struct SleepView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
+            .tabRoot(.sleep)
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
