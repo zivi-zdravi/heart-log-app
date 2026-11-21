@@ -499,7 +499,7 @@ struct AboutView: View {
     var body: some View {
         List {
             Section {
-                settingsRow("Zdravlje version", (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--")
+                settingsRow("Zdravlje version", "\((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "--"), build \((Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "--")")
                 if let expiry = Signing.expiry {
                     settingsRow(expiry > Date() ? "Re-sign by" : "Signing expired", expiry.formatted(date: .abbreviated, time: .shortened))
                 }

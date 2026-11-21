@@ -110,8 +110,8 @@ private struct SlotRows: View {
     let kind: DoseKind
     @ObservedObject private var store = DoseStore.shared
 
-    /// The day being shown: the shared day across the tabs.
-    private var day: String { DayEngine.shared.key(AppNav.shared.day) }
+    /// The day being shown. Passed in so the rows redraw when the day changes.
+    let day: String
 
     var body: some View {
         let done = DoseMath.allTaken(store.data, day: day, slot)
@@ -177,7 +177,7 @@ struct DoseList: View {
             }
             ForEach(Array(slots.enumerated()), id: \.element.id) { n, s in
                 if n > 0 { Divider().background(Theme.line) }
-                SlotRows(slot: s, kind: kind)
+                SlotRows(slot: s, kind: kind, day: DayEngine.shared.key(nav.day))
             }
             NavigationLink { DoseManageView(kind: kind) } label: {
                 Text(slots.isEmpty ? "Add \(kind.plural.lowercased())" : "Manage \(kind.plural.lowercased())")
