@@ -66,7 +66,8 @@ struct TrendsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(rangeText).font(.system(size: 13)).foregroundColor(Theme.dim)
+                            // Same height as the date row on the other tabs, so the headers line up.
+                            Text(rangeText).font(.system(size: 13)).foregroundColor(Theme.dim).frame(minHeight: 32)
                             Text("Trends").font(Theme.display(30)).foregroundColor(Theme.text)
                         }
                         Spacer()
@@ -75,7 +76,7 @@ struct TrendsView: View {
                             if ai.isSetUp && ai.settings.ask {
                                 Button { asking = true } label: {
                                     Label("Ask", systemImage: "sparkle").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.blue)
-                                        .padding(.horizontal, 14).frame(minHeight: 40)
+                                        .padding(.horizontal, 14).frame(minHeight: 36)
                                         .background(Color(hex: 0x26394A)).clipShape(Capsule())
                                 }
                                 .accessibilityLabel("Ask about your data")

@@ -90,7 +90,7 @@ struct ActivityTab: View {
                         }
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
             }
             .tabRoot(.activity)
             .daySwipe()
