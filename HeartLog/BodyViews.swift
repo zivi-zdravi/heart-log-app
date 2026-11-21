@@ -354,7 +354,7 @@ struct BodyLogCard: View {
                             line("Menopause") { Text(l).foregroundColor(Theme.text) }
                         }
                         if doses.data.medicationsOn {
-                            let c = DoseMath.counts(doses.data, day: DayEngine.shared.key(day), .medication)
+                            let c = DoseMath.counts(doses.data, day: DoseStore.today(), .medication)
                             if c.total > 0 { line("Medications") { Text("\(c.taken) of \(c.total) taken").foregroundColor(Theme.text) } }
                         }
                     }
@@ -438,7 +438,7 @@ struct BodyLogView: View {
             })))
         }
         if doses.data.medicationsOn {
-            let c = DoseMath.counts(doses.data, day: DoseStore.today(), .medication)
+            let c = DoseMath.counts(doses.data, day: DayEngine.shared.key(day), .medication)
             out.append(BodyTile(id: "meds", view: AnyView(NavigationLink { MedicationsView() } label: {
                 tile("pills", Theme.blue, "Medications", c.total == 0 ? "Set up what you take" : "\(c.taken) of \(c.total) taken \(isToday ? "today" : "on " + weekday)")
             })))
