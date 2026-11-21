@@ -45,7 +45,8 @@ struct ActivityTab: View {
     @ObservedObject private var acts = ActivityStore.shared
     @ObservedObject private var nav = AppNav.shared
     @State private var strain = StrainDay()
-    private var today: Date { Calendar.current.startOfDay(for: Date()) }
+    /// The shared day (named today for the cards it opens).
+    private var today: Date { nav.day }
     @State private var picking = false
     @State private var showLive = false
     @State private var imported: [ImportedWorkout] = []
@@ -55,16 +56,18 @@ struct ActivityTab: View {
         NavigationStack(path: $nav.activityPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    ScreenTitle(title: "Activity", topic: .activity)
-                    StepsCard()
+                    TabHeader(title: "Activity", topic: .activity, dateText: Theme.dayText.string(from: today))
+                    StepsCard(day: today)
                     StrainCard(day: strain) { nav.activityPath.append(.strain(today)) }
                     CaloriesCard(day: today) { nav.activityPath.append(.calories(today)) }
                     if let current = acts.current {
                         Button("Return to \(current.type)") { showLive = true }.buttonStyle(TintButton(color: Theme.orange))
-                    } else {
+                    } else if nav.isToday {
                         Button("Start activity") { picking = true }.buttonStyle(TintButton(color: Theme.orange))
                     }
-                    if acts.saved.isEmpty {
+                    if !nav.isToday {
+                        pastDay
+                    } else if acts.saved.isEmpty {
                         Text("Finished activities, and ones you save from suggestions on Today, show up here.")
                             .font(.system(size: 14)).foregroundColor(Theme.dim)
                     } else {
@@ -74,7 +77,7 @@ struct ActivityTab: View {
                             }
                         }
                     }
-                    if !imported.isEmpty {
+                    if nav.isToday && !imported.isEmpty {
                         Text("From WHOOP history").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.dim).padding(.top, 4)
                         Card {
                             ForEach(imported.prefix(showAllImported ? imported.count : 15)) { w in
@@ -90,11 +93,12 @@ struct ActivityTab: View {
                 .padding(20)
             }
             .tabRoot(.activity)
+            .daySwipe()
             .background(Theme.bg.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .appPages()
         }
-        .task { strain = await StrainDay.load(today) }
+        .task(id: today) { strain = await StrainDay.load(today) }
         .onAppear { Task { strain = await StrainDay.load(today) } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in Task { strain = await StrainDay.load(today) } }
         .sheet(isPresented: $picking) {
@@ -111,6 +115,27 @@ struct ActivityTab: View {
             DispatchQueue.main.async {
                 acts.pendingStart = false
                 if acts.current != nil { showLive = true } else { picking = true }
+            }
+        }
+    }
+
+    /// A past day: only that day's activities, yours and from WHOOP history.
+    @ViewBuilder private var pastDay: some View {
+        let start = Int64(today.timeIntervalSince1970 * 1000)
+        let end = Int64((Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today).timeIntervalSince1970 * 1000)
+        let mine = acts.saved.filter { $0.start >= start && $0.start < end }
+        let theirs = imported.filter { $0.start >= start && $0.start < end }
+        if mine.isEmpty && theirs.isEmpty {
+            Text("No activities on \(Theme.weekday.string(from: today)).").font(.system(size: 14)).foregroundColor(Theme.dim)
+        } else {
+            Text("Activities on \(Theme.weekday.string(from: today))").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.dim).padding(.top, 4)
+            Card {
+                ForEach(mine) { a in
+                    NavigationLink { ActivitySummaryView(id: a.id) } label: { ActivityRow(record: a) }
+                }
+                ForEach(theirs) { w in
+                    NavigationLink { ImportedWorkoutView(workout: w) } label: { ImportedWorkoutRow(workout: w) }
+                }
             }
         }
     }

@@ -428,6 +428,8 @@ struct StepsRing: View {
 
 /// The Steps card at the top of Activity. Opens the longer steps history.
 struct StepsCard: View {
+    /// The day shown; the week bars end on it.
+    var day = Calendar.current.startOfDay(for: Date())
     @StateObject private var today = StepsProvider()
     @ObservedObject private var notify = NotifyStore.shared
     @State private var week: [Date: Int] = [:]
@@ -435,7 +437,7 @@ struct StepsCard: View {
     private var goal: Int { max(1, notify.settings.stepGoalCount) }
     private var days: [Date] {
         let cal = Calendar.current
-        let t = cal.startOfDay(for: Date())
+        let t = cal.startOfDay(for: day)
         return (0..<7).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: t) }
     }
 
@@ -443,7 +445,7 @@ struct StepsCard: View {
         NavigationLink { StepsHistoryView() } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Steps today").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
+                    Text(isToday ? "Steps today" : "Steps on " + Theme.weekday.string(from: day)).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim)
                     Spacer()
                     Text(today.note.hasPrefix("From Shortcut") ? "from your Shortcut" : "from your phone").font(.system(size: 12)).foregroundColor(Theme.dim)
@@ -475,13 +477,16 @@ struct StepsCard: View {
             .accentCard(Theme.green, radius: 16)
         }
         .buttonStyle(.plain)
-        .task { await load() }
+        .task(id: day) { await load() }
     }
 
+    private var isToday: Bool { Calendar.current.isDateInToday(day) }
+
     @MainActor private func load() async {
-        await today.load(day: Calendar.current.startOfDay(for: Date()))
-        var w = await StepsProvider.daily(from: days.first ?? Date(), to: Date())
-        if let s = today.steps { w[Calendar.current.startOfDay(for: Date())] = s }
+        await today.load(day: day)
+        let end = min(Calendar.current.date(byAdding: .day, value: 1, to: day) ?? Date(), Date())
+        var w = await StepsProvider.daily(from: days.first ?? Date(), to: end)
+        if let s = today.steps { w[day] = s }
         week = w
     }
 }

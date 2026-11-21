@@ -86,10 +86,7 @@ struct SleepView: View {
         NavigationStack(path: $nav.sleepPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        DayChevrons(text: "Night of \(Theme.shortDay.string(from: nightOf))", canGoForward: !isToday, move: move)
-                        ScreenTitle(title: "Sleep", topic: .sleep)
-                    }
+                    TabHeader(title: "Sleep", topic: .sleep, dateText: "Night of \(Theme.shortDay.string(from: nightOf))")
                     if let r = record, let p = r.sleep {
                         scoreCard(r, p)
                         heartTiles(r)
@@ -131,7 +128,7 @@ struct SleepView: View {
             .appPages()
         }
         .task(id: day) { await reload() }
-        .followToday($day)
+        .onChange(of: day) { _ in loaded = false }
         .sheet(isPresented: $showAlarm) {
             NavigationStack {
                 AlarmView()

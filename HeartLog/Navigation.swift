@@ -19,7 +19,47 @@ final class AppNav: ObservableObject {
     static let shared = AppNav()
 
     @Published var tab: AppTab = .today
-    @Published var sleepDay = Calendar.current.startOfDay(for: Date())
+    /// The day every tab shows. Moving it on one tab moves it on all of them.
+    @Published var day = Calendar.current.startOfDay(for: Date())
+    private var knownToday = Calendar.current.startOfDay(for: Date())
+    private var leftAt: Date?
+    private var timer: Timer?
+    var isToday: Bool { Calendar.current.isDateInToday(day) }
+    /// Away this long and the day goes back to today.
+    static let resetAfter: TimeInterval = 3 * 3600
+
+    private init() {
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.leftAt = Date() }
+        nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            if let t = self.leftAt, Date().timeIntervalSince(t) >= Self.resetAfter { self.goToday() }
+            self.leftAt = nil
+            self.followToday()
+        }
+        nc.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in self?.followToday() }
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.followToday() }
+    }
+
+    /// Moves the shared day by whole days, never past today.
+    func move(_ by: Int) {
+        let today = Calendar.current.startOfDay(for: Date())
+        guard let d = Calendar.current.date(byAdding: .day, value: by, to: day), d <= today else { return }
+        day = d
+    }
+
+    func goToday() {
+        let t = Calendar.current.startOfDay(for: Date())
+        if day != t { day = t }
+    }
+
+    /// Showing today when midnight passes (the app runs overnight to record): move to the new today.
+    private func followToday() {
+        let now = Calendar.current.startOfDay(for: Date())
+        guard now != knownToday else { return }
+        if Calendar.current.isDate(day, inSameDayAs: knownToday) { day = now }
+        knownToday = now
+    }
     @Published var sleepPath: [AppPage] = []
     @Published var activityPath: [AppPage] = []
     /// Which side of the Log tab is showing.
@@ -51,10 +91,14 @@ final class AppNav: ObservableObject {
     func open(_ page: AppPage) {
         switch page {
         case .hrv(let d), .rhr(let d), .recovery(let d):
-            sleepDay = Calendar.current.startOfDay(for: d)
+            day = Calendar.current.startOfDay(for: d)
             sleepPath = [page]
             jump(.sleep)
-        case .strain, .calories, .steps:
+        case .strain(let d), .calories(let d):
+            day = Calendar.current.startOfDay(for: d)
+            activityPath = [page]
+            jump(.activity)
+        case .steps:
             activityPath = [page]
             jump(.activity)
         }
@@ -68,7 +112,7 @@ final class AppNav: ObservableObject {
     }
 
     func openSleep(_ day: Date) {
-        sleepDay = Calendar.current.startOfDay(for: day)
+        self.day = Calendar.current.startOfDay(for: day)
         sleepPath = []
         jump(.sleep)
     }
@@ -149,6 +193,77 @@ struct AskButton: View {
 }
 
 /// A main screen's title with the Ask button beside it.
+/// Band battery and settings, top right on every main screen.
+struct BandPill: View {
+    @ObservedObject private var rec = Recorder.shared
+    @ObservedObject private var notify = NotifyStore.shared
+
+    var body: some View {
+        NavigationLink { SettingsView() } label: {
+            HStack(spacing: 10) {
+                HStack(spacing: 5) {
+                    Image(systemName: symbol).font(.system(size: 16)).foregroundColor(color)
+                    Text(rec.battery.map { "\($0)%" } ?? "--").foregroundColor(Theme.text)
+                }
+                Image(systemName: "gearshape").font(.system(size: 18)).foregroundColor(Theme.dim)
+            }
+            .frame(minHeight: 32)
+            .font(.system(size: 13, weight: .semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Theme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .accessibilityLabel("Band battery \(rec.battery.map { "\($0) percent" } ?? "unknown")\(rec.charging == true ? ", charging" : ""). Open settings")
+    }
+
+    private var symbol: String {
+        if rec.charging == true { return "battery.100.bolt" }
+        guard let b = rec.battery else { return "battery.0" }
+        return b >= 88 ? "battery.100" : b >= 63 ? "battery.75" : b >= 38 ? "battery.50" : b >= 13 ? "battery.25" : "battery.0"
+    }
+
+    private var color: Color {
+        if rec.charging == true { return Theme.green }
+        guard let b = rec.battery else { return Theme.dim }
+        return b <= notify.settings.lowBatteryAt ? Theme.orange : Theme.green
+    }
+}
+
+/// The top of Activity, Sleep, Trends and Log: date row and title on the left,
+/// battery and settings plus Ask on the right.
+struct TabHeader: View {
+    let title: String
+    let topic: AskTopic
+    /// nil hides the date row (Trends).
+    var dateText: String?
+    @ObservedObject private var nav = AppNav.shared
+
+    var body: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                if let t = dateText { DayChevrons(text: t, canGoForward: !nav.isToday, move: nav.move) }
+                Text(title).font(Theme.display(30)).foregroundColor(Theme.text)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 8) {
+                BandPill()
+                AskButton(topic: topic)
+            }
+        }
+    }
+}
+
+extension View {
+    /// Swipe left or right to move the shared day, like Today.
+    func daySwipe() -> some View {
+        simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
+            guard abs(v.translation.width) > 60, abs(v.translation.width) > abs(v.translation.height) * 2 else { return }
+            AppNav.shared.move(v.translation.width > 0 ? -1 : 1)
+        })
+    }
+}
+
 struct ScreenTitle: View {
     let title: String
     let topic: AskTopic

@@ -100,8 +100,10 @@ struct StrainCard: View {
     let day: StrainDay
     let open: () -> Void
 
+    private var isToday: Bool { Calendar.current.isDateInToday(Date(timeIntervalSince1970: Double(day.start) / 1000)) }
+
     private var early: Bool {
-        Calendar.current.component(.hour, from: Date()) < 9 && day.strain < 3
+        isToday && Calendar.current.component(.hour, from: Date()) < 9 && day.strain < 3
     }
 
     var body: some View {
@@ -116,7 +118,7 @@ struct StrainCard: View {
                     Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.dim)
                 }
                 StrainLine(day: day, height: 90)
-                Text(early ? "Your strain builds through the day." : rangeText(day, today: true) ?? "From your heart rate through the day.")
+                Text(early ? "Your strain builds through the day." : rangeText(day, today: isToday) ?? "From your heart rate through the day.")
                     .font(.system(size: 12)).foregroundColor(Theme.dim)
             }
         }
@@ -143,7 +145,7 @@ struct CaloriesCard: View {
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(total.map { Int($0).formatted() } ?? "--").font(Theme.display(26)).foregroundColor(Theme.text)
-                    Text("so far today").font(.system(size: 12)).foregroundColor(Theme.dim)
+                    Text(Calendar.current.isDateInToday(day) ? "so far today" : "on " + Theme.weekday.string(from: day)).font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 if let t = total, let r = resting {
                     HStack(spacing: 16) {
@@ -158,7 +160,7 @@ struct CaloriesCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens Calories burned")
-        .task { await load() }
+        .task(id: day) { await load() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in Task { await load() } }
     }
 

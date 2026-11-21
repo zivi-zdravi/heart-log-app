@@ -49,7 +49,8 @@ struct TodayView: View {
     @StateObject private var steps = StepsProvider()
     @ObservedObject private var ai = AIStore.shared
     @State private var asking = false
-    @State private var day = Calendar.current.startOfDay(for: Date())
+    @ObservedObject private var nav = AppNav.shared
+    private var day: Date { nav.day }
     @State private var summary = DaySummary()
     @State private var record: DayRecord?
     private let refresh = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -112,7 +113,6 @@ struct TodayView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in skyVisible = false }
         .onDisappear { skyVisible = false }
         .sheet(isPresented: $asking) { AskView(range: .week, topic: .today) }
-        .followToday($day)
         .onAppear { Task { await reload() } }
         .onReceive(refresh) { _ in
             if isToday { Task { await reload() } }
@@ -136,11 +136,7 @@ struct TodayView: View {
         await steps.load(day: d)
     }
 
-    private func move(_ by: Int) {
-        let today = Calendar.current.startOfDay(for: Date())
-        guard let d = Calendar.current.date(byAdding: .day, value: by, to: day), d <= today else { return }
-        day = d
-    }
+    private func move(_ by: Int) { nav.move(by) }
 
     private var showAsk: Bool { ai.isSetUp && ai.settings.ask }
 
@@ -194,22 +190,7 @@ struct TodayView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 8) {
-                NavigationLink { SettingsView() } label: {
-                    HStack(spacing: 10) {
-                        HStack(spacing: 5) {
-                            Image(systemName: batterySymbol).font(.system(size: 16)).foregroundColor(batteryColor)
-                            Text(rec.battery.map { "\($0)%" } ?? "--").foregroundColor(Theme.text)
-                        }
-                        Image(systemName: "gearshape").font(.system(size: 18)).foregroundColor(Theme.dim)
-                    }
-                    .frame(minHeight: 32)
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .accessibilityLabel("Band battery \(rec.battery.map { "\($0) percent" } ?? "unknown")\(rec.charging == true ? ", charging" : ""). Open settings")
+                BandPill()
                 if showAsk {
                     Button { asking = true } label: {
                         Label("Ask", systemImage: "sparkle").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.blue)
@@ -276,17 +257,6 @@ struct TodayView: View {
         }
     }
 
-    private var batterySymbol: String {
-        if rec.charging == true { return "battery.100.bolt" }
-        guard let b = rec.battery else { return "battery.0" }
-        return b >= 88 ? "battery.100" : b >= 63 ? "battery.75" : b >= 38 ? "battery.50" : b >= 13 ? "battery.25" : "battery.0"
-    }
-
-    private var batteryColor: Color {
-        if rec.charging == true { return Theme.green }
-        guard let b = rec.battery else { return Theme.dim }
-        return b <= NotifyStore.shared.settings.lowBatteryAt ? Theme.orange : Theme.green
-    }
 
     private var strainValue: Double? { record?.strain ?? (summary.hasData ? summary.strain : nil) }
 

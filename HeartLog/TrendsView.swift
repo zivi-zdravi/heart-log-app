@@ -69,13 +69,16 @@ struct TrendsView: View {
                             Text("Trends").font(Theme.display(30)).foregroundColor(Theme.text)
                         }
                         Spacer()
-                        if ai.isSetUp && ai.settings.ask {
-                            Button { asking = true } label: {
-                                Label("Ask", systemImage: "sparkle").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.blue)
-                                    .padding(.horizontal, 14).frame(minHeight: 40)
-                                    .background(Color(hex: 0x26394A)).clipShape(Capsule())
+                        VStack(alignment: .trailing, spacing: 8) {
+                            BandPill()
+                            if ai.isSetUp && ai.settings.ask {
+                                Button { asking = true } label: {
+                                    Label("Ask", systemImage: "sparkle").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.blue)
+                                        .padding(.horizontal, 14).frame(minHeight: 40)
+                                        .background(Color(hex: 0x26394A)).clipShape(Capsule())
+                                }
+                                .accessibilityLabel("Ask about your data")
                             }
-                            .accessibilityLabel("Ask about your data")
                         }
                     }
                     Picker("Range", selection: $range) {

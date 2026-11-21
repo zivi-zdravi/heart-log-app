@@ -110,7 +110,8 @@ private struct SlotRows: View {
     let kind: DoseKind
     @ObservedObject private var store = DoseStore.shared
 
-    private var day: String { DoseStore.today() }
+    /// The day being shown: the shared day across the tabs.
+    private var day: String { DayEngine.shared.key(AppNav.shared.day) }
 
     var body: some View {
         let done = DoseMath.allTaken(store.data, day: day, slot)
@@ -130,7 +131,7 @@ private struct SlotRows: View {
                         let last = slot.items.compactMap { store.data.taken[day]?[$0.id] }.max()
                         Text("All taken\(last.map { " \(Theme.clock($0))" } ?? "")").font(.system(size: 13)).foregroundColor(kind.color)
                     } else {
-                        Button("Take all") { store.takeAll(slot) }
+                        Button("Take all") { store.takeAll(slot, day: day) }
                             .font(.system(size: 13, weight: .semibold)).foregroundColor(kind.color)
                             .padding(.horizontal, 12).frame(minHeight: 32)
                             .background(kind.color.opacity(0.18)).clipShape(RoundedRectangle(cornerRadius: 10))
@@ -139,7 +140,7 @@ private struct SlotRows: View {
             }
             ForEach(slot.items) { i in
                 let on = DoseMath.isTaken(store.data, day: day, item: i.id)
-                Button { store.toggle(i.id) } label: {
+                Button { store.toggle(i.id, day: day) } label: {
                     HStack(spacing: 10) {
                         CheckCircle(on: on, color: kind.color)
                         (Text(i.name).foregroundColor(Theme.text) + Text("  \(DoseMath.doseText(i))").foregroundColor(Theme.dim))
@@ -160,15 +161,16 @@ private struct SlotRows: View {
 struct DoseList: View {
     let kind: DoseKind
     @ObservedObject private var store = DoseStore.shared
+    @ObservedObject private var nav = AppNav.shared
 
     var body: some View {
         let slots = DoseMath.slots(store.data, kind)
-        let c = DoseMath.counts(store.data, day: DoseStore.today(), kind)
+        let c = DoseMath.counts(store.data, day: DayEngine.shared.key(nav.day), kind)
         Card(accent: kind.color) {
             HStack {
                 Label(kind.plural, systemImage: "pills").labelStyle(AccentLabel(color: kind.color)).font(.system(size: 13)).foregroundColor(Theme.dim)
                 Spacer()
-                if c.total > 0 { Text("\(c.taken) of \(c.total) today").font(.system(size: 13)).foregroundColor(Theme.dim) }
+                if c.total > 0 { Text("\(c.taken) of \(c.total) \(nav.isToday ? "today" : "on " + Theme.weekday.string(from: nav.day))").font(.system(size: 13)).foregroundColor(Theme.dim) }
             }
             if slots.isEmpty {
                 Text("Add what you take once, with its dose and time. Then check it off each day.").font(.system(size: 14)).foregroundColor(Theme.dim)

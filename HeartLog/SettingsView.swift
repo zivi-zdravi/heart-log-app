@@ -605,7 +605,7 @@ struct RootView: View {
                 .tabItem { Label("Today", systemImage: "sun.max") }.tag(AppTab.today)
             ActivityTab().id(nav.stackID(.activity))
                 .tabItem { Label("Activity", systemImage: "figure.walk") }.tag(AppTab.activity)
-            SleepView(day: $nav.sleepDay).id(nav.stackID(.sleep))
+            SleepView(day: $nav.day).id(nav.stackID(.sleep))
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(AppTab.sleep)
             TrendsView().id(nav.stackID(.trends))
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(AppTab.trends)

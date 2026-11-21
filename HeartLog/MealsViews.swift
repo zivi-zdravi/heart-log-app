@@ -22,7 +22,8 @@ struct MealsView: View {
     var inLog = false
     @ObservedObject private var store = MealStore.shared
     @ObservedObject private var doses = DoseStore.shared
-    @State private var day = Calendar.current.startOfDay(for: Date())
+    @ObservedObject private var nav = AppNav.shared
+    private var day: Date { nav.day }
     @State private var goal: MealStore.Goal?
     @State private var burned: Double?
     @State private var setup = false
@@ -46,7 +47,6 @@ struct MealsView: View {
         Group {
             if inLog { page } else { NavigationStack { page } }
         }
-        .followToday($day)
         .task(id: day) { await reload() }
         .onAppear {
             if !store.settings.setUp { setup = true }
@@ -62,12 +62,13 @@ struct MealsView: View {
     private var page: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if inLog { LogHeader() }
-                    VStack(alignment: .leading, spacing: 0) {
-                        DayChevrons(text: Theme.dayText.string(from: day), canGoForward: !isToday) { by in
-                            if let d = Calendar.current.date(byAdding: .day, value: by, to: day), d <= Calendar.current.startOfDay(for: Date()) { day = d }
+                    if inLog {
+                        LogHeader()
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            DayChevrons(text: Theme.dayText.string(from: day), canGoForward: !isToday, move: nav.move)
+                            ScreenTitle(title: "Meals", topic: .meals)
                         }
-                        if !inLog { ScreenTitle(title: "Meals", topic: .meals) }
                     }
                     summary
                     Button { search = SearchRequest(slot: defaultSlot) } label: {
