@@ -36,7 +36,7 @@ struct AppSettings: Codable, Equatable {
         age = try c.decodeIfPresent(Int.self, forKey: .age)
         female = try c.decodeIfPresent(Bool.self, forKey: .female)
         lowBattery = try c.decodeIfPresent(Int.self, forKey: .lowBattery) ?? 20
-        mealsOn = try c.decodeIfPresent(Bool.self, forKey: .mealsOn) ?? true
+        mealsOn = true  // Meals is part of the base app; an old "off" is ignored
         waterOn = try c.decodeIfPresent(Bool.self, forKey: .waterOn) ?? true
         alarmOn = try c.decodeIfPresent(Bool.self, forKey: .alarmOn) ?? true
         serbianGreeting = try c.decodeIfPresent(Bool.self, forKey: .serbianGreeting) ?? false

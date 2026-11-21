@@ -319,11 +319,49 @@ private let cyclePink = Color(hex: 0xF2A7B8)
 private let lilac = Color(hex: 0xC7A6E8)
 private let lilacBg = Color(hex: 0x2A2433)
 
+// MARK: - Past days
+
+/// What the Body log shows for a day other than today.
+enum BodyDay {
+    static func range(_ day: Date) -> (Int64, Int64) {
+        let start = Int64(day.timeIntervalSince1970 * 1000)
+        let end = Int64((Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day).timeIntervalSince1970 * 1000)
+        return (start, end)
+    }
+
+    /// "118/76, Thursday 7:40 AM (+1)" or nil when there was no reading.
+    static func bp(_ data: BodyData, _ day: Date) -> String? {
+        let (a, b) = range(day)
+        let on = data.bp.filter { $0.time >= a && $0.time < b }.sorted { $0.time < $1.time }
+        guard let first = on.first else { return nil }
+        return "\(BodyMath.text(first)), \(Theme.weekday.string(from: day)) \(Theme.clock(first.time))" + (on.count > 1 ? " (+\(on.count - 1))" : "")
+    }
+
+    /// "2 hot flashes, 1 night sweat" or nil. Night sweats count toward the morning after.
+    static func symptoms(_ data: BodyData, _ day: Date) -> String? {
+        let cal = Calendar.current
+        let key = HistoryImport.dayKey(day, calendar: cal)
+        var parts: [String] = []
+        for name in ["Hot flashes", "Night sweats", "Heart palpitations"] {
+            let n = data.events.filter { e in
+                guard e.name == name else { return false }
+                let k = name == "Night sweats" ? BodyMath.nightKey(e.time, calendar: cal)
+                    : HistoryImport.dayKey(Date(timeIntervalSince1970: Double(e.time) / 1000), calendar: cal)
+                return k == key
+            }.count
+            let one = ["Hot flashes": "hot flash", "Night sweats": "night sweat", "Heart palpitations": "heart palpitation"][name] ?? name.lowercased()
+            if n > 0 { parts.append(n == 1 ? "1 \(one)" : "\(n) \(name.lowercased())") }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+}
+
 // MARK: - Today card
 
 struct BodyLogCard: View {
     @ObservedObject private var store = BodyStore.shared
     @ObservedObject private var doses = DoseStore.shared
+    @ObservedObject private var nav = AppNav.shared
 
     var body: some View {
         if store.data.settings.anyOn || doses.data.medicationsOn {
@@ -339,7 +377,9 @@ struct BodyLogCard: View {
                         }
                         if store.data.settings.bloodPressure {
                             line("Blood pressure") {
-                                if let r = store.data.bp.first {
+                                if !nav.isToday {
+                                    Text(BodyDay.bp(store.data, nav.day) ?? "No reading").foregroundColor(Theme.text)
+                                } else if let r = store.data.bp.first {
                                     Text(BodyMath.text(r)).fontWeight(.semibold).foregroundColor(Theme.text)
                                     Text(BodyMath.when(r.time, now: Date(), calendar: .current)).foregroundColor(Theme.dim)
                                 } else {
@@ -348,13 +388,13 @@ struct BodyLogCard: View {
                             }
                         }
                         if store.data.settings.cycle {
-                            line("Cycle") { Text(CycleSummary.line(store.data)).foregroundColor(Theme.text) }
+                            line("Cycle") { Text(CycleSummary.line(store.data, on: nav.day)).foregroundColor(Theme.text) }
                         }
-                        if store.data.settings.menopause, let l = SymptomSummary.todayLine(store.data) {
+                        if store.data.settings.menopause, let l = nav.isToday ? SymptomSummary.todayLine(store.data) : BodyDay.symptoms(store.data, nav.day) {
                             line("Menopause") { Text(l).foregroundColor(Theme.text) }
                         }
                         if doses.data.medicationsOn {
-                            let c = DoseMath.counts(doses.data, day: DoseStore.today(), .medication)
+                            let c = DoseMath.counts(doses.data, day: DayEngine.shared.key(nav.day), .medication)
                             if c.total > 0 { line("Medications") { Text("\(c.taken) of \(c.total) taken").foregroundColor(Theme.text) } }
                         }
                     }
@@ -446,36 +486,13 @@ struct BodyLogView: View {
         return out
     }
 
-    private var dayRange: (Int64, Int64) {
-        let start = Int64(day.timeIntervalSince1970 * 1000)
-        let end = Int64((Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day).timeIntervalSince1970 * 1000)
-        return (start, end)
-    }
-
     private var bpNote: String {
-        if isToday { return store.data.bp.first.map { "Last: \(BodyMath.text($0)), \(Theme.clock($0.time))" } ?? "No readings yet" }
-        let (a, b) = dayRange
-        let on = store.data.bp.filter { $0.time >= a && $0.time < b }.sorted { $0.time < $1.time }
-        guard let first = on.first else { return "No reading on \(weekday)" }
-        return "\(BodyMath.text(first)), \(weekday) \(Theme.clock(first.time))" + (on.count > 1 ? " (+\(on.count - 1))" : "")
+        isToday ? (store.data.bp.first.map { "Last: \(BodyMath.text($0)), \(Theme.clock($0.time))" } ?? "No readings yet")
+            : BodyDay.bp(store.data, day) ?? "No reading on \(weekday)"
     }
 
     private var menoNote: String {
-        if isToday { return "Hot flashes, night sweats, sleep, joints and more" }
-        let cal = Calendar.current
-        let key = HistoryImport.dayKey(day, calendar: cal)
-        var parts: [String] = []
-        for name in ["Hot flashes", "Night sweats", "Heart palpitations"] {
-            let n = store.data.events.filter { e in
-                guard e.name == name else { return false }
-                let k = name == "Night sweats" ? BodyMath.nightKey(e.time, calendar: cal)
-                    : HistoryImport.dayKey(Date(timeIntervalSince1970: Double(e.time) / 1000), calendar: cal)
-                return k == key
-            }.count
-            let one = ["Hot flashes": "hot flash", "Night sweats": "night sweat", "Heart palpitations": "heart palpitation"][name] ?? name.lowercased()
-            if n > 0 { parts.append(n == 1 ? "1 \(one)" : "\(n) \(name.lowercased())") }
-        }
-        return parts.isEmpty ? "Nothing logged on \(weekday)" : parts.joined(separator: ", ")
+        isToday ? "Hot flashes, night sweats, sleep, joints and more" : BodyDay.symptoms(store.data, day) ?? "Nothing logged on \(weekday)"
     }
 
     private func tile(_ icon: String, _ color: Color, _ title: String, _ note: String) -> some View {
@@ -1176,12 +1193,7 @@ struct LogTab: View {
     @ObservedObject private var store = BodyStore.shared
     @ObservedObject private var doses = DoseStore.shared
 
-    private var showBody: Bool {
-        let meals = settings.value.mealsOn, body = store.data.settings.anyOn || doses.data.medicationsOn
-        if !meals { return true }
-        if !body { return false }
-        return nav.logBody
-    }
+    private var showBody: Bool { nav.logBody }
 
     var body: some View {
         NavigationStack {
@@ -1202,13 +1214,11 @@ struct LogHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TabHeader(title: "Log", topic: nav.logBody ? .body : .meals, dateText: Theme.dayText.string(from: nav.day))
-            if settings.value.mealsOn && (store.data.settings.anyOn || doses.data.medicationsOn) {
-                Picker("Show", selection: $nav.logBody) {
-                    Text("Meals").tag(false)
-                    Text("Body").tag(true)
-                }
-                .pickerStyle(.segmented)
+            Picker("Show", selection: $nav.logBody) {
+                Text("Meals").tag(false)
+                Text("Body").tag(true)
             }
+            .pickerStyle(.segmented)
         }
     }
 }

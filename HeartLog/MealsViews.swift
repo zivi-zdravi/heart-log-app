@@ -908,7 +908,6 @@ struct MealsSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Meals", isOn: Binding(get: { SettingsStore.shared.value.mealsOn }, set: { SettingsStore.shared.value.mealsOn = $0 }))
                 Toggle("Water", isOn: Binding(get: { SettingsStore.shared.value.waterOn }, set: { v in
                     SettingsStore.shared.value.waterOn = v
                     if !v { WaterFeature.turnedOff() }
@@ -918,7 +917,7 @@ struct MealsSettingsView: View {
                     Toggle("Include supplements in Ask", isOn: Binding(get: { doses.data.supplementsInAsk }, set: { v in doses.change { $0.supplementsInAsk = v } }))
                 }
             } footer: {
-                Text("Turning Meals off hides Meals in the Log tab. Turning Water or Supplements off hides them and stops their reminders. What you logged is kept.")
+                Text("Turning Water or Supplements off hides them and stops their reminders. What you logged is kept.")
             }
             Section {
                 NavigationLink {

@@ -609,10 +609,8 @@ struct RootView: View {
                 .tabItem { Label("Sleep", systemImage: "moon") }.tag(AppTab.sleep)
             TrendsView().id(nav.stackID(.trends))
                 .tabItem { Label("Trends", systemImage: "chart.bar") }.tag(AppTab.trends)
-            if settings.value.mealsOn || bodyStore.data.settings.anyOn || doses.data.medicationsOn {
-                LogTab().id(nav.stackID(.log))
-                    .tabItem { Label("Log", systemImage: "square.and.pencil") }.tag(AppTab.log)
-            }
+            LogTab().id(nav.stackID(.log))
+                .tabItem { Label("Log", systemImage: "square.and.pencil") }.tag(AppTab.log)
         }
         .tint(Theme.orange)
         .overlay {

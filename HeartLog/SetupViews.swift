@@ -9,13 +9,13 @@ struct SetupFlow: View {
     @ObservedObject private var r = Recorder.shared
     @ObservedObject private var ai = AIStore.shared
     @ObservedObject private var body_ = BodyStore.shared
+    @ObservedObject private var doses = DoseStore.shared
     @State private var step = 0
     @State private var weight = ""
     @State private var feet = ""
     @State private var inches = ""
     @State private var age = ""
     @State private var notificationsOn = true
-    @State private var bodyLogOn = false
     @State private var passcode = ""
     @FocusState private var typing: Bool
 
@@ -221,20 +221,20 @@ struct SetupFlow: View {
         Group {
             title("Pick what you want", "Turn on what's useful. Everything else stays out of the way.")
             box {
-                toggle("Meals", "Log food and see eaten vs burned", $settings.value.mealsOn)
+                heading("Meals", "Log food and see eaten vs burned")
+                toggle("Supplements", "Vitamins and supplements, check off, reminders", doseBinding(\.supplementsOn)).padding(.leading, 16)
                 Divider().overlay(Theme.track)
                 toggle("Water", "Glasses through the day, band buzz reminders", $settings.value.waterOn)
                 Divider().overlay(Theme.track)
-                toggle("Body log", "Blood pressure, cycle, menopause", $bodyLogOn)
-                if bodyLogOn {
-                    VStack(spacing: 0) {
-                        let offer = BodyMath.suggested(female: settings.value.female, age: settings.value.age)
-                        if offer.contains(.bloodPressure) { toggle("Blood pressure", nil, bodyBinding(\.bloodPressure)) }
-                        if offer.contains(.cycle) { toggle("Cycle", nil, bodyBinding(\.cycle)) }
-                        if offer.contains(.menopause) { toggle("Menopause", nil, bodyBinding(\.menopause)) }
-                    }
-                    .padding(.leading, 16)
+                heading("Body log", "Pick what to track")
+                VStack(spacing: 0) {
+                    let offer = BodyMath.suggested(female: settings.value.female, age: settings.value.age)
+                    if offer.contains(.bloodPressure) { toggle("Blood pressure", nil, bodyBinding(\.bloodPressure)) }
+                    if offer.contains(.cycle) { toggle("Cycle", nil, bodyBinding(\.cycle)) }
+                    if offer.contains(.menopause) { toggle("Menopause", nil, bodyBinding(\.menopause)) }
+                    toggle("Medications", "Doses, times, reminders", doseBinding(\.medicationsOn))
                 }
+                .padding(.leading, 16)
                 Divider().overlay(Theme.track)
                 toggle("Band alarm", "Silent wake-up buzz", $settings.value.alarmOn)
                 Divider().overlay(Theme.track)
@@ -248,6 +248,19 @@ struct SetupFlow: View {
 
     private func bodyBinding(_ key: WritableKeyPath<BodySettings, Bool>) -> Binding<Bool> {
         Binding(get: { body_.settings[keyPath: key] }, set: { v in var s = body_.settings; s[keyPath: key] = v; body_.settings = s })
+    }
+
+    private func doseBinding(_ key: WritableKeyPath<DoseData, Bool>) -> Binding<Bool> {
+        Binding(get: { DoseStore.shared.data[keyPath: key] }, set: { v in DoseStore.shared.change { $0[keyPath: key] = v } })
+    }
+
+    /// A section that is always part of the app: a name, no switch.
+    private func heading(_ t: String, _ sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(t).font(.system(size: 15)).foregroundColor(Theme.text)
+            Text(sub).font(.system(size: 12)).foregroundColor(Theme.dim)
+        }
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
     }
 
     private func toggle(_ t: String, _ sub: String?, _ b: Binding<Bool>) -> some View {
@@ -310,7 +323,6 @@ struct SetupFlow: View {
             inches = String(total % 12)
         }
         age = s.age.map(String.init) ?? ""
-        bodyLogOn = body_.settings.anyOn
         passcode = ai.passcode
     }
 
@@ -351,7 +363,6 @@ struct SetupFlow: View {
         let rhrs = HistoryStore.shared.days.values.sorted { $0.day < $1.day }.compactMap(\.rhr)
         if let rest = DetailMath.restingForZones(rhrs) { s.restingForZones = rest }
         settings.value = s
-        if !bodyLogOn { var b = body_.settings; b.bloodPressure = false; b.cycle = false; b.menopause = false; body_.settings = b }
         if !notificationsOn {
             NotifyStore.shared.change { n in
                 n.lowBattery = .off; n.charger = .off; n.goneQuiet = .off; n.alarmNotSaved = .off; n.noAlarmCheckIn = .off
