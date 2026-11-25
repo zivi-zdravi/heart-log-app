@@ -510,6 +510,9 @@ struct AboutView: View {
                     settingsRow("Band clock", abs(offset) <= 2 ? "In sync with phone" : "\(offset > 0 ? "Ahead" : "Behind") by \(abs(offset)) s")
                 }
                 settingsRow("Band download", downloadSummary)
+                if let n = capture.newestRecord {
+                    settingsRow("Band data up to", Calendar.current.isDateInToday(n) ? n.formatted(date: .omitted, time: .shortened) : n.formatted(date: .abbreviated, time: .shortened))
+                }
                 BandStepsRow()
                 settingsRow("WHOOP history", whoopSummary)
                 settingsRow("Band days (OpenStrap import)", bandSummary)

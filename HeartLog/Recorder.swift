@@ -98,7 +98,10 @@ final class Recorder: NSObject, ObservableObject {
             if self?.recording == true { ClosedReminder.schedule() }
         }
         BandLink.shared.log = { [weak self] type, detail in self?.log(type, detail) }
-        watchdog = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.checkStream() }
+        watchdog = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.checkStream()
+            BandLink.shared.housekeeping()
+        }
     }
 
     // MARK: Watchdog

@@ -14,6 +14,11 @@ final class BandCapture: ObservableObject {
     @Published private(set) var lastData: Date?
     @Published private(set) var lastStaged: Date?
     @Published private(set) var secondsToday = 0
+    /// Phone time of the newest second the band has handed over.
+    @Published private(set) var newestRecord: Date? = UserDefaults.standard.object(forKey: "bandNewestRecord") as? Date
+
+    /// How far behind real time the band download is, in seconds (nil before any data).
+    var behindSeconds: TimeInterval? { newestRecord.map { Date().timeIntervalSince($0) } }
 
     private let queue = DispatchQueue(label: "band.capture")
     private var pending: [BandSecond] = []
@@ -49,7 +54,14 @@ final class BandCapture: ObservableObject {
             if self.pending.count >= 600 { self.flush(stage: false) }
             self.scheduleFlush()
         }
-        DispatchQueue.main.async { self.lastData = Date() }
+        DispatchQueue.main.async {
+            self.lastData = Date()
+            let t = Date(timeIntervalSince1970: Double(r.t))
+            if t <= Date().addingTimeInterval(300), self.newestRecord.map({ t > $0 }) ?? true {
+                self.newestRecord = t
+                UserDefaults.standard.set(t, forKey: "bandNewestRecord")
+            }
+        }
     }
 
     /// Writes everything received so far to disk, then calls back on the main

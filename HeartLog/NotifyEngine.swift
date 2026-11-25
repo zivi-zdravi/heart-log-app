@@ -345,7 +345,8 @@ final class NotifyEngine {
                 let nowMs = Int64(now.timeIntervalSince1970 * 1000)
                 let dayMs = Int64(day.timeIntervalSince1970 * 1000)
                 // Only recent ones, so turning this on doesn't announce the whole morning.
-                let fresh = found.filter { nowMs - $0.end < 30 * 60_000 && !NotifyStore.shared.state.announcedActivities.contains($0.start) }
+                // Three hours, because band-detected ones show up after the next download.
+                let fresh = found.filter { nowMs - $0.end < 3 * 3_600_000 && !NotifyStore.shared.state.announcedActivities.contains($0.start) }
                 guard let span = fresh.last else { return }
                 let mins = Int((span.end - span.start) / 60_000)
                 let start = Date(timeIntervalSince1970: Double(span.start) / 1000).formatted(date: .omitted, time: .shortened)

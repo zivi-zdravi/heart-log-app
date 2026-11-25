@@ -392,6 +392,7 @@ private struct ScrollTopKey: PreferenceKey {
 /// normally happen every 15 minutes.
 struct SyncLine: View {
     @ObservedObject private var link = BandLink.shared
+    @ObservedObject private var capture = BandCapture.shared
 
     private var syncing: Bool {
         switch link.syncStatus {
@@ -408,6 +409,9 @@ struct SyncLine: View {
                     Text("Syncing")
                 }
                 .font(.system(size: 12)).foregroundColor(Theme.orange)
+            } else if let n = capture.newestRecord, ctx.date.timeIntervalSince(n) > 3600 {
+                Text("Catching up, band data to " + Self.when(n, now: ctx.date))
+                    .font(.system(size: 12)).foregroundColor(Theme.orange)
             } else if let d = link.lastDownload {
                 Text("Synced " + Self.when(d, now: ctx.date))
                     .font(.system(size: 12))

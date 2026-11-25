@@ -91,6 +91,8 @@ final class BandLink: ObservableObject {
     private var failedBatches = 0
     private var lastConfirmedToken: [UInt8]?
     private var lastSyncAttempt = Date.distantPast
+    /// The last download confirmed at least one batch.
+    private var lastRunGotData = false
     private var lastHandshakeRetry = Date.distantPast
 
     var ready: Bool { state == .answering && writeCharacteristic != nil && peripheral?.state == .connected }
@@ -499,11 +501,19 @@ final class BandLink: ObservableObject {
     /// Called when the link comes up and about once a minute: downloads when
     /// switched on and it's been 30 minutes.
     private func downloadIfDue() {
-        guard downloadOn, !syncing else { return }
-        if let last = lastDownload, Date().timeIntervalSince(last) < 15 * 60 { return }
-        if Date().timeIntervalSince(lastSyncAttempt) < 5 * 60 { return }
+        guard downloadOn, !syncing, ready else { return }
+        // Behind by more than 20 minutes and the last run brought data: go
+        // again soon instead of waiting, so the download catches up.
+        let catchingUp = lastRunGotData && (BandCapture.shared.behindSeconds ?? 0) > 20 * 60
+        if let last = lastDownload, Date().timeIntervalSince(last) < (catchingUp ? 20 : 15 * 60) { return }
+        if Date().timeIntervalSince(lastSyncAttempt) < (catchingUp ? 20 : 5 * 60) { return }
+        if catchingUp { log?("band_sync", "catching up") }
         startSync(test: false)
     }
+
+    /// From the recorder's 30-second timer, so downloads keep going even
+    /// when the heart rate broadcast is quiet.
+    func housekeeping() { downloadIfDue() }
 
     private func startSync(test: Bool) {
         guard let g = generation, ready else {
@@ -627,6 +637,7 @@ final class BandLink: ObservableObject {
     }
 
     private func finishedDownload() {
+        lastRunGotData = batches > 0
         lastDownload = Date()
         UserDefaults.standard.set(lastDownload, forKey: "bandLastDownload")
         let h = totalSeconds / 3600, m = (totalSeconds % 3600) / 60, sec = totalSeconds % 60
@@ -638,6 +649,7 @@ final class BandLink: ObservableObject {
     private func endSync(_ status: SyncStatus) {
         guard syncing else { return }
         syncing = false
+        if case .failed = status { lastRunGotData = false }
         syncWatch?.cancel()
         syncStatus = status
         if let g = generation {
