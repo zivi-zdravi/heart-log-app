@@ -51,8 +51,10 @@ final class HRFillTests: XCTestCase {
 
     func testPotteringAroundIsNotAMove() {
         // Walk label on half of each minute, about 30 steps a minute: moving around the house.
-        let band = (0..<(40 * 60)).map { i in
-            sec(t0 + Int64(i), hr: 98, steps: i / 2, activity: (i / 30) % 2 == 0 ? 1 : 0)
+        var band: [BandSecond] = []
+        for i in 0..<(40 * 60) {
+            let label = (i / 30) % 2 == 0 ? 1 : 0
+            band.append(sec(t0 + Int64(i), hr: 98, steps: i / 2, activity: label))
         }
         XCTAssertTrue(HRFill.moves(band).isEmpty)
     }
