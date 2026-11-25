@@ -548,6 +548,11 @@ struct AskView: View {
         let meals = AskContext.mealSummaries(days: days)
         var ctx = await Task.detached { AskContext.build(days: days, meals: meals) }.value
         ctx.json["asked_from"] = "the \(topic.rawValue) screen"
+        let g = await GoalLoader.load().calories
+        if g > 0 {
+            let t = MacroMath.targets(calories: g, weightKg: SettingsStore.shared.value.weightKg, settings: MealStore.shared.settings)
+            ctx.json["daily_targets"] = ["calories": g, "protein_g": t.protein, "carbs_g": t.carbs, "fat_g": t.fat]
+        }
         sent = ctx.description
         do {
             let a = try await AIClient.ask(question: q, context: ctx.json, history: history)
@@ -573,7 +578,19 @@ enum AskContext {
         return f
     }()
 
-    struct MealDay { var kcal: Int; var protein: Int; var first: Int64; var last: Int64 }
+    struct MealDay {
+        var kcal: Int
+        var protein: Int
+        var carbs: Int = 0
+        var fat: Int = 0
+        var first: Int64
+        var last: Int64
+        /// What was eaten, one line per item. Only for the last week, to keep the question small.
+        var foods: [String] = []
+    }
+
+    /// Days of food lists sent with a question.
+    static let foodListDays = 7
 
     /// Meal totals and times per day, read on the main actor where meals live.
     @MainActor
@@ -587,7 +604,15 @@ enum AskContext {
             let e = MealStore.shared.entries(k)
             guard let first = e.first, let last = e.last else { continue }
             let t = MealStore.shared.total(k)
-            out[k] = MealDay(kcal: Int(t.kcal), protein: Int(t.protein), first: first.time, last: last.time)
+            var day = MealDay(kcal: Int(t.kcal), protein: Int(t.protein), carbs: Int(t.carbs), fat: Int(t.fat),
+                              first: first.time, last: last.time)
+            if i < foodListDays {
+                day.foods = e.map { m in
+                    let n = m.nutrients
+                    return "\(m.slot.rawValue): \(m.food.name), \(m.amountText) (\(Int(n.kcal)) kcal, protein \(Int(n.protein)) g, carbs \(Int(n.carbs)) g, fat \(Int(n.fat)) g)"
+                }
+            }
+            out[k] = day
         }
         return out
     }
@@ -640,6 +665,9 @@ enum AskContext {
             if let m = mealDays[r.day] {
                 d["calories_eaten"] = m.kcal
                 d["protein_g"] = m.protein
+                d["carbs_g"] = m.carbs
+                d["fat_g"] = m.fat
+                if !m.foods.isEmpty { d["foods"] = m.foods }
                 d["first_meal"] = hm(m.first)
                 d["last_meal"] = hm(m.last)
             }
@@ -684,7 +712,7 @@ enum AskContext {
             rows.append(d.compactMapValues { $0 is NSNull ? nil : $0 })
         }
         let json: [String: Any] = ["days": rows, "note": "One row per day, keyed by the date the person woke up. Missing fields were not measured."]
-        let desc = "Your question, plus daily summaries for \(rows.count) days: recovery, sleep score and times, sleep stages where known, HRV, resting heart rate, breathing rate, strain, calories, meal times and water\(shareBP ? ", blood pressure readings" : "")\(shareCycle ? ", cycle days and period flow" : "")\(shareSymptoms ? ", symptoms you logged" : "")\(shareSupps ? ", supplements taken" : "")\(shareMeds ? ", medications taken" : ""). No names, no raw heart data, no photos."
+        let desc = "Your question, plus daily summaries for \(rows.count) days: recovery, sleep score and times, sleep stages where known, HRV, resting heart rate, breathing rate, strain, calories, calories and macros eaten, foods logged in the last week, your daily targets, meal times and water\(shareBP ? ", blood pressure readings" : "")\(shareCycle ? ", cycle days and period flow" : "")\(shareSymptoms ? ", symptoms you logged" : "")\(shareSupps ? ", supplements taken" : "")\(shareMeds ? ", medications taken" : ""). No names, no raw heart data, no photos."
         return (json, desc)
     }
 }
