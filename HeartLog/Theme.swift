@@ -28,6 +28,16 @@ enum Theme {
 
     static func clock(_ ms: Int64) -> String { time.string(from: Date(timeIntervalSince1970: Double(ms) / 1000)) }
 
+    /// A length with units, so 1 hour 12 minutes and 1 minute 12 seconds can't look alike.
+    static func length(_ seconds: Double) -> String {
+        let s = max(0, Int(seconds))
+        if s < 60 { return "\(s) s" }
+        if s < 600 { return s % 60 == 0 ? "\(s / 60) min" : "\(s / 60) min \(s % 60) s" }
+        if s < 3600 { return "\(s / 60) min" }
+        let m = (s % 3600) / 60
+        return m == 0 ? "\(s / 3600) h" : "\(s / 3600) h \(m) min"
+    }
+
     static func duration(_ seconds: Double, showSeconds: Bool = false) -> String {
         let s = Int(seconds)
         if showSeconds && s < 3600 { return String(format: "%d:%02d", s / 60, s % 60) }

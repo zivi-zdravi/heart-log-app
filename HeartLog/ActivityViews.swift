@@ -33,7 +33,7 @@ struct ActivityRow: View {
                     .font(.system(size: 13)).foregroundColor(Theme.dim)
             }
             Spacer()
-            Text(Theme.duration(Double((record.end ?? record.start) - record.start) / 1000, showSeconds: true))
+            Text(Theme.length(Double((record.end ?? record.start) - record.start) / 1000))
                 .font(.system(size: 15)).monospacedDigit().foregroundColor(Theme.text)
             Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.dim)
         }
