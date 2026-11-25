@@ -30,7 +30,7 @@ struct StrainDay {
             let rec = DayEngine.shared.record(day, settings: settings)
             out.target = rec?.recovery.map { SleepMath.strainTarget(recovery: $0) }
             guard end > start else { return out }
-            let s = Store.shared.readSamples(from: start, to: end)
+            let s = Store.shared.readDaySamples(from: start, to: end)
             out.zoneSeconds = Metrics.zoneSeconds(s, out.bounds)
             out.strain = Metrics.strain(zoneSeconds: out.zoneSeconds)
             out.line = StrainMath.timeline(s, bounds: out.bounds, from: start, to: end)

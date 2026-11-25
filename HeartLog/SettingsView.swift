@@ -677,7 +677,7 @@ private struct BandStepsRow: View {
         guard let day = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: Date())) else { return }
         let band = await Task.detached { BandCapture.shared.steps(day: day) }.value
         let phone = StepsProvider()
-        await phone.load(day: day)
+        await phone.load(day: day, band: false)
         let p = phone.steps.map { "phone \($0.formatted())" } ?? "no phone count"
         if band.minutes == 0 {
             text = "No band data yet (\(p))"

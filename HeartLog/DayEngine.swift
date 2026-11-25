@@ -94,7 +94,7 @@ enum Overrides {
 /// earlier days come from WHOOP history. Finished days are cached in days.json.
 final class DayEngine {
     static let shared = DayEngine()
-    static let version = 6
+    static let version = 7
 
     private struct Cache: Codable {
         var fingerprint = ""
@@ -186,9 +186,10 @@ final class DayEngine {
         let dayEnd = ms(calendar.date(byAdding: .day, value: 1, to: start) ?? start)
         let finished = now > dayEnd + hour
         let samples = Store.shared.readSamples(from: s0 - 6 * hour, to: min(dayEnd, now))
+        let daytime = Store.shared.readDaySamples(from: s0, to: min(dayEnd, now))
         var r = DayRecord(day: k, source: "none")
-        if samples.count >= 600 {
-            r = calculate(k, start: start, s0: s0, dayEnd: min(dayEnd, now), samples: samples, settings: settings)
+        if samples.count >= 600 || daytime.count >= 600 {
+            r = calculate(k, start: start, s0: s0, dayEnd: min(dayEnd, now), samples: samples, daytime: daytime, settings: settings)
         }
         if finished {
             cache.days[k] = r
@@ -198,7 +199,7 @@ final class DayEngine {
         return false
     }
 
-    private func calculate(_ k: String, start: Date, s0: Int64, dayEnd: Int64, samples: [Sample], settings: AppSettings) -> DayRecord {
+    private func calculate(_ k: String, start: Date, s0: Int64, dayEnd: Int64, samples: [Sample], daytime: [Sample], settings: AppSettings) -> DayRecord {
         let hour: Int64 = 3_600_000
         var r = DayRecord(day: k, source: "app")
         let night = samples.filter { $0.t < s0 + 14 * hour }
@@ -230,7 +231,8 @@ final class DayEngine {
             r.respRate = (b * 10).rounded() / 10
             r.respSource = "band"
         }
-        let day = samples.filter { $0.t >= s0 }
+        // Strain and calories include the band's own record where the live stream was silent.
+        let day = daytime
         let bounds = settings.zoneBounds
         r.strain = Metrics.strain(zoneSeconds: Metrics.zoneSeconds(day, bounds))
         if let body = settings.body, let first = day.first {

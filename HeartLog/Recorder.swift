@@ -42,10 +42,20 @@ final class Recorder: NSObject, ObservableObject {
     @Published var firmware: String? = UserDefaults.standard.string(forKey: "band.firmware")
     @Published var hardware: String? = UserDefaults.standard.string(forKey: "band.hardware")
     @Published var infoMissing = false
+    /// When the last real heart rate reading arrived (0 bpm readings don't count).
+    @Published private(set) var lastBeatAt: Date?
+    /// True while the watchdog is trying to bring the stream back.
+    @Published private(set) var reconnecting = false
 
     private var central: CBCentralManager!
     private var band: CBPeripheral?
     private var batteryCharacteristic: CBCharacteristic?
+    private var hrCharacteristic: CBCharacteristic?
+    private var watchdog: Timer?
+    private var resubscribedAt: Date?
+    private var lastKick: Date?
+    /// Launch or the latest connection; a stall is counted from here at the earliest.
+    private var watchFrom = Date()
     private let defaults = UserDefaults.standard
     private var session: String? {
         get { defaults.string(forKey: "session") }
@@ -88,6 +98,56 @@ final class Recorder: NSObject, ObservableObject {
             if self?.recording == true { ClosedReminder.schedule() }
         }
         BandLink.shared.log = { [weak self] type, detail in self?.log(type, detail) }
+        watchdog = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.checkStream() }
+    }
+
+    // MARK: Watchdog
+
+    /// Seconds without a reading before the stream counts as stalled.
+    static let stallAfter: TimeInterval = 90
+
+    /// The live stream can go quiet while the band stays connected (the
+    /// private channel keeps syncing, so nothing looks wrong). First ask the
+    /// band to start sending again; if that doesn't help within two minutes,
+    /// drop the connection so iOS reconnects from scratch. At most one full
+    /// reconnect every 15 minutes, and none while the band is charging.
+    /// Runs on a timer and on any band message, so it also works in the background.
+    func checkStream(now: Date = Date()) {
+        guard recording, let b = band, b.state == .connected, charging != true else {
+            reconnecting = false
+            return
+        }
+        let quietSince = max(lastBeatAt ?? .distantPast, watchFrom)
+        guard now.timeIntervalSince(quietSince) >= Self.stallAfter else {
+            reconnecting = false
+            resubscribedAt = nil
+            return
+        }
+        reconnecting = true
+        if resubscribedAt == nil, let c = hrCharacteristic {
+            resubscribedAt = now
+            log("hr_stalled", "resubscribe after \(Int(now.timeIntervalSince(quietSince))) s")
+            b.setNotifyValue(false, for: c)
+            b.setNotifyValue(true, for: c)
+            return
+        }
+        if resubscribedAt == nil {
+            resubscribedAt = now
+            log("hr_stalled", "rediscover")
+            b.discoverServices(servicesToDiscover)
+            return
+        }
+        guard let r = resubscribedAt, now.timeIntervalSince(r) >= 120 else { return }
+        if let k = lastKick, now.timeIntervalSince(k) < 15 * 60 { return }
+        // Don't cut a history download short.
+        switch BandLink.shared.syncStatus {
+        case .asking, .receiving: return
+        default: break
+        }
+        lastKick = now
+        resubscribedAt = nil
+        log("hr_stalled", "reconnect")
+        central.cancelPeripheralConnection(b)  // didDisconnect connects again
     }
 
     private var servicesToDiscover: [CBUUID] { [hrService, batService, infoService] + BandLink.shared.serviceUUIDs }
@@ -136,6 +196,8 @@ final class Recorder: NSObject, ObservableObject {
         if let b = band { central.cancelPeripheralConnection(b) }
         band = nil
         batteryCharacteristic = nil
+        hrCharacteristic = nil
+        reconnecting = false
         charging = nil
         BandLink.shared.reset()
         NotifyEngine.shared.recordingStopped()
@@ -180,6 +242,11 @@ final class Recorder: NSObject, ObservableObject {
                 rr.append(raw * 1000 / 1024)
                 i += 2
             }
+        }
+        if hr > 0 {
+            lastBeatAt = Date()
+            if reconnecting { reconnecting = false; log("hr_back") }
+            resubscribedAt = nil
         }
         let now = Store.nowMs()
         Store.shared.addSample(s, ms: now, hr: hr, flags: flags, len: bytes.count, rr: rr)
@@ -227,6 +294,8 @@ extension Recorder: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect p: CBPeripheral) {
+        watchFrom = Date()
+        resubscribedAt = nil
         log("connected", p.name ?? "")
         status = p.name ?? "Connected"
         p.delegate = self
@@ -273,6 +342,7 @@ extension Recorder: CBPeripheralDelegate {
         if BandLink.shared.didDiscoverCharacteristics(for: s, on: p) { return }
         for c in s.characteristics ?? [] {
             if c.uuid == hrChar {
+                hrCharacteristic = c
                 p.setNotifyValue(true, for: c)
             } else if c.uuid == batChar {
                 batteryCharacteristic = c
@@ -288,6 +358,7 @@ extension Recorder: CBPeripheralDelegate {
         guard let data = c.value else { return }
         if BandLink.shared.handles(c) {
             BandLink.shared.didReceive(data, from: c)
+            checkStream()
         } else if c.uuid == hrChar {
             handleHR(data)
             BandLink.shared.tick()

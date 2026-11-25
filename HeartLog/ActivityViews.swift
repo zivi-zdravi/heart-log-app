@@ -242,7 +242,7 @@ struct LiveActivityView: View {
         .task(id: a.id) {
             Recorder.shared.flushActive()
             let start = a.start
-            loaded = await Task.detached(priority: .userInitiated) { Store.shared.readSamples(from: start, to: Store.nowMs()) }.value
+            loaded = await Task.detached(priority: .userInitiated) { Store.shared.readDaySamples(from: start, to: Store.nowMs()) }.value
         }
     }
 }
@@ -307,7 +307,7 @@ struct ActivitySummaryView: View {
                 let st = settings.value
                 let s0 = a.start
                 stats = await Task.detached(priority: .userInitiated) {
-                    ActivityStats.make(Store.shared.readSamples(from: s0, to: end), settings: st, start: s0, end: end)
+                    ActivityStats.make(Store.shared.readDaySamples(from: s0, to: end), settings: st, start: s0, end: end)
                 }.value
             }
             .sheet(isPresented: $editing) { EditTimes(record: a) }

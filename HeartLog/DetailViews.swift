@@ -382,7 +382,7 @@ struct CaloriesDetailView: View {
             var hours: [Double] = []
             var rest: Double?
             if let body = settings.body, rec?.isWhoop != true {
-                let s = Store.shared.readSamples(from: start, to: now)
+                let s = Store.shared.readDaySamples(from: start, to: now)
                 if !s.isEmpty { hours = DetailMath.hourlyCalories(s, dayStart: start, now: now, body: body, bounds: settings.zoneBounds) }
                 rest = Metrics.bmrPerMinute(body) * Double(now - start) / 60_000
             }
@@ -448,7 +448,7 @@ struct StepsCard: View {
                     Text(isToday ? "Steps today" : "Steps on " + Theme.weekday.string(from: day)).font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.text)
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.dim)
                     Spacer()
-                    Text(today.note.hasPrefix("From Shortcut") ? "from your Shortcut" : "from your phone").font(.system(size: 12)).foregroundColor(Theme.dim)
+                    Text(today.fromBand ? "from your band" : today.note.hasPrefix("From Shortcut") ? "from your Shortcut" : "from your phone").font(.system(size: 12)).foregroundColor(Theme.dim)
                 }
                 HStack(spacing: 14) {
                     StepsRing(fraction: Double(today.steps ?? 0) / Double(goal))
@@ -458,7 +458,7 @@ struct StepsCard: View {
                         if let s = today.steps { Text(DetailMath.stepsLine(steps: s, goal: goal)).font(.system(size: 13)).foregroundColor(soft) }
                     }
                 }
-                if !today.note.isEmpty && !today.note.hasPrefix("From Shortcut") { footnote(today.note) }
+                if !today.fromBand && !today.note.isEmpty && !today.note.hasPrefix("From Shortcut") { footnote(today.note) }
                 if week.count >= 2 {
                     HStack {
                         Text("Last 7 days").font(.system(size: 13)).foregroundColor(Theme.dim)
@@ -588,7 +588,7 @@ struct StepsHistoryView: View {
                         footnote("Each bar is that month's average day.")
                     }
                 }
-                footnote("Steps come from your phone (Apple Health) or your steps Shortcut. The goal is in Settings, Notifications.")
+                footnote("Steps come from your band on days it recorded, otherwise from your phone (Apple Health) or your steps Shortcut. The band keeps about 3 weeks. The goal is in Settings, Notifications.")
             }
             .padding(20)
         }

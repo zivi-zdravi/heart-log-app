@@ -57,6 +57,7 @@ targets:
       - path: HeartLog/Detail.swift
       - path: HeartLog/Body.swift
       - path: HeartLog/Doses.swift
+      - path: HeartLog/HRFill.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.zivizdravi.heartlog.tests

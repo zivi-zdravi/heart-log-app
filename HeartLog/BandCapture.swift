@@ -100,6 +100,10 @@ final class BandCapture: ObservableObject {
                 touched.insert(day)
             }
             prune()
+            // Seconds for a day that's already finished (a walk without the
+            // phone, synced after midnight) change its strain and calories.
+            let today = dayKey(Int64(Date().timeIntervalSince1970))
+            if let earliest = byDay.keys.filter({ $0 < today }).min() { DayEngine.shared.invalidate(from: earliest) }
         }
         if stage, !touched.isEmpty {
             let days = touched

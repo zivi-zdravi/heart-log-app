@@ -6,9 +6,30 @@ import HealthKit
 final class StepsProvider: ObservableObject {
     @Published var steps: Int?
     @Published var note = ""
+    /// True when the count came from the band rather than the phone.
+    @Published var fromBand = false
     private let store = HKHealthStore()
 
-    func load(day: Date) async {
+    /// A day needs at least this many minutes of band records to use the band's count.
+    nonisolated static let bandMinutes = 60
+
+    /// The band's own count for a day, when it recorded enough of it. Off the main thread.
+    nonisolated static func bandSteps(_ day: Date) async -> Int? {
+        let start = Calendar.current.startOfDay(for: day)
+        let b = await Task.detached(priority: .userInitiated) { BandCapture.shared.steps(day: start) }.value
+        return b.minutes >= bandMinutes ? b.steps : nil
+    }
+
+    /// Steps for a day: the band's count when it has the day, otherwise the
+    /// phone (Shortcut or Apple Health). `band: false` reads the phone only.
+    func load(day: Date, band: Bool = true) async {
+        fromBand = false
+        if band, let b = await Self.bandSteps(day) {
+            steps = b
+            fromBand = true
+            note = "From your band"
+            return
+        }
         if let logged = StepsLog.entry(for: day) {
             steps = logged.count
             note = "From Shortcut, \(Date(timeIntervalSince1970: Double(logged.at) / 1000).formatted(date: .omitted, time: .shortened))"
@@ -45,8 +66,9 @@ final class StepsProvider: ObservableObject {
 }
 
 extension StepsProvider {
-    /// Steps for each day from `from` through `to` (start-of-day dates). A day logged by the
-    /// Shortcut uses that number; other days come from Apple Health. Days with nothing are left out.
+    /// Steps for each day from `from` through `to` (start-of-day dates). A day the band
+    /// recorded uses its count; otherwise the Shortcut's number, then Apple Health.
+    /// Days with nothing are left out.
     static func daily(from: Date, to: Date) async -> [Date: Int] {
         let cal = Calendar.current
         let start = cal.startOfDay(for: from)
@@ -74,6 +96,7 @@ extension StepsProvider {
         var d = start
         while d < end {
             if let e = logged[StepsLog.key(d)] { out[d] = e.count }
+            if let b = await bandSteps(d) { out[d] = b }
             guard let next = cal.date(byAdding: .day, value: 1, to: d) else { break }
             d = next
         }

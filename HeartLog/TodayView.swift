@@ -16,7 +16,10 @@ struct DaySummary {
         let now = Store.nowMs()
         let end = min(dayEnd, now)
         guard end > start else { return DaySummary() }
-        let samples = Store.shared.readSamples(from: start, to: end)
+        let live = Store.shared.readSamples(from: start, to: end)
+        let band = BandCapture.shared.seconds(from: start / 1000, to: (end + 999) / 1000)
+        // Strain, calories and suggestions use the band's record where the live stream was silent.
+        let samples = HRFill.merge(live: live, band: band).filter { $0.t >= start && $0.t < end }
         var s = DaySummary()
         s.hasData = !samples.isEmpty
         guard s.hasData else { return s }
@@ -24,14 +27,15 @@ struct DaySummary {
         let zones = Metrics.zoneSeconds(samples, bounds)
         s.strain = Metrics.strain(zoneSeconds: zones)
         let hour: Int64 = 3_600_000
-        s.hrv = Metrics.hrv(samples.filter { $0.t >= start + 2 * hour && $0.t < start + 6 * hour })
-        s.resting = Metrics.restingHR(samples.filter { $0.t < start + 8 * hour })
+        s.hrv = Metrics.hrv(live.filter { $0.t >= start + 2 * hour && $0.t < start + 6 * hour })
+        s.resting = Metrics.restingHR(live.filter { $0.t < start + 8 * hour })
         s.coverage = zones.reduce(0, +) * 1000 / Double(end - start)
         if let body = settings.body {
             s.calories = Metrics.calories(samples, body: body, bounds: bounds, elapsedMinutes: Double(end - start) / 60_000)
         }
         let taken = activities.map { (start: $0.start, end: $0.end ?? now) }
-        s.suggestions = Metrics.detectActivities(samples, threshold: bounds[0]).filter { span in
+        let found = Metrics.detectActivities(samples, threshold: bounds[0]) + HRFill.moves(band.filter { $0.t * 1000 >= start })
+        s.suggestions = HRFill.union(found).filter { span in
             span.end < now - 3 * 60_000 && !taken.contains { span.start < $0.end && $0.start < span.end }
         }
         return s
@@ -242,7 +246,15 @@ struct TodayView: View {
                     }
                 }
             }
-            Text(rec.recording && rec.bpm > 0 ? "\(rec.bpm)" : "--").font(Theme.display(50)).foregroundColor(Theme.text)
+            TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                let gap = LiveGap.minutes(last: rec.lastBeatAt, now: ctx.date)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(rec.recording && rec.bpm > 0 && gap == nil ? "\(rec.bpm)" : "--").font(Theme.display(50)).foregroundColor(Theme.text)
+                    if rec.recording, let text = LiveGap.text(minutes: gap, status: rec.status, reconnecting: rec.reconnecting, charging: rec.charging == true) {
+                        Text(text).font(.system(size: 13)).foregroundColor(Theme.orange)
+                    }
+                }
+            }
             HStack(spacing: 10) {
                 Button(acts.current == nil ? "Start activity" : "Return to activity") {
                     acts.pendingStart = true
@@ -342,7 +354,7 @@ struct TodayView: View {
                 Tile(title: "Resting heart rate", value: rhr.map { "\($0)" } ?? "--", note: r?.usualRHR.map { "Usually \(Int($0.rounded()))" }, opens: true, accent: Theme.orange, icon: "heart")
             }
             Button { AppNav.shared.open(.steps) } label: {
-                Tile(title: "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.note.isEmpty ? nil : steps.note, opens: true, accent: Theme.green, icon: "figure.walk")
+                Tile(title: steps.fromBand ? "Steps" : "Steps (iPhone)", value: steps.steps.map { $0.formatted() } ?? "--", note: steps.fromBand ? "From your band" : (steps.note.isEmpty ? nil : steps.note), opens: true, accent: Theme.green, icon: "figure.walk")
             }
             Button { AppNav.shared.open(.calories(day)) } label: {
                 Tile(title: "Calories burned", value: cal.map { Int($0).formatted() } ?? "--",
@@ -410,5 +422,26 @@ struct SyncLine: View {
         if cal.isDate(d, inSameDayAs: now) { return time }
         if let y = cal.date(byAdding: .day, value: -1, to: now), cal.isDate(d, inSameDayAs: y) { return "yesterday \(time)" }
         return d.formatted(.dateTime.month(.abbreviated).day()) + ", " + time
+    }
+}
+
+/// What Today says when the live heart rate has gone quiet.
+enum LiveGap {
+    /// Whole minutes since the last reading, once it's been at least two.
+    static func minutes(last: Date?, now: Date) -> Int? {
+        guard let last else { return nil }
+        let m = Int(now.timeIntervalSince(last) / 60)
+        return m >= 2 ? m : nil
+    }
+
+    static func text(minutes: Int?, status: String, reconnecting: Bool, charging: Bool) -> String? {
+        if status == "Waiting for band" || status == "Retrying" {
+            return "Band out of reach. It keeps recording and fills in when it's back."
+        }
+        if status == "Bluetooth is off" { return "Bluetooth is off. Turn it on to see your heart rate." }
+        guard let m = minutes else { return nil }
+        let span = m < 60 ? "\(m) min" : m < 120 ? "over an hour" : "\(m / 60) hours"
+        if charging { return "No heart rate for \(span) (on the charger)" }
+        return "No heart rate for \(span)" + (reconnecting ? ", reconnecting" : "")
     }
 }
