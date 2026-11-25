@@ -36,11 +36,17 @@ enum HRFill {
         return false
     }
 
-    /// Stretches of at least `minMinutes` where the band itself saw walking
-    /// or running: most of a minute's seconds labelled walk or run, or at
-    /// least `stepsPerMinute` steps in it. Short pauses (up to `maxGap`
-    /// minutes) don't break a stretch. Times in milliseconds.
-    static func moves(_ band: [BandSecond], minMinutes: Int = 10, maxGap: Int = 2, stepsPerMinute: Int = 60) -> [Metrics.Span] {
+    /// Stretches of at least `minMinutes` of steady walking or running. A
+    /// minute counts when the band labelled at least 80% of it walk or run
+    /// AND counted at least `minSteps` steps, or when it counted at least
+    /// `strongSteps` steps on its own. A single slow minute (`maxGap`) doesn't
+    /// break a stretch. Times in milliseconds.
+    ///
+    /// Tuned on a real hilly walk (Nov 24, 2026): moving around the house
+    /// shows the walk label on and off with 20 to 45 steps a minute; the walk
+    /// itself was labelled the whole minute at 40 to 100 steps.
+    static func moves(_ band: [BandSecond], minMinutes: Int = 10, maxGap: Int = 1,
+                      minSteps: Int = 30, strongSteps: Int = 80) -> [Metrics.Span] {
         guard band.count > 1 else { return [] }
         var seen: [Int64: Int] = [:]
         var moving: [Int64: Int] = [:]
@@ -59,7 +65,8 @@ enum HRFill {
         let active = seen.keys.filter { m in
             let n = seen[m] ?? 0
             guard n >= 20 else { return false }
-            return (moving[m] ?? 0) * 2 > n || (steps[m] ?? 0) >= stepsPerMinute
+            let st = steps[m] ?? 0
+            return (Double(moving[m] ?? 0) >= 0.8 * Double(n) && st >= minSteps) || st >= strongSteps
         }.sorted()
         var out: [Metrics.Span] = []
         var first: Int64?
